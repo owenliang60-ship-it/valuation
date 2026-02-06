@@ -1,0 +1,4 @@
+numpy>=2.4
+pandas>=3.0
+requests>=2.32
+python-dateutil>=2.9
