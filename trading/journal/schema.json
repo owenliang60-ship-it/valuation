@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trade Journal Entry",
+  "description": "Complete lifecycle record for a single trade. Every entry requires a falsifiable thesis, variant view, kill conditions, and target IRR.",
+  "type": "object",
+  "required": ["trade_id", "status", "pre_trade", "created_at"],
+  "properties": {
+    "trade_id": {
+      "type": "string",
+      "description": "Unique identifier. Format: YYYY-MM-DD-SYMBOL-DIRECTION (e.g., 2026-02-07-AAPL-LONG)",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}-[A-Z]+-(?:LONG|SHORT)(?:-\\d+)?$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "active", "closed", "cancelled"],
+      "description": "planned = thesis written, not yet executed. active = position open. closed = fully exited. cancelled = thesis abandoned before execution."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form tags for filtering (e.g., 'earnings-play', 'technical', 'macro-driven')"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "pre_trade": {
+      "type": "object",
+      "description": "All fields must be completed BEFORE any order is placed.",
+      "required": [
+        "symbol", "direction", "investment_bucket", "thesis",
+        "variant_view", "kill_conditions", "target_irr_pct",
+        "action_price", "entry_rules", "dna_rating", "timing_rating",
+        "target_position_pct", "evidence_sources"
+      ],
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "description": "Ticker symbol (e.g., AAPL)"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["long", "short"]
+        },
+        "instrument": {
+          "type": "string",
+          "enum": ["equity", "call_option", "put_option", "spread", "other"],
+          "default": "equity"
+        },
+        "investment_bucket": {
+          "type": "string",
+          "enum": [
+            "long_term_compounder",
+            "catalyst_driven_long",
+            "short_position",
+            "secular_short"
+          ],
+          "description": "One of four investment buckets per BidClub framework"
+        },
+        "thesis": {
+          "type": "string",
+          "description": "Falsifiable thesis statement. Must be specific enough to be proven wrong. Example: 'AAPL Services revenue will grow >20% YoY for next 4 quarters driven by Apple Intelligence monetization.'"
+        },
+        "variant_view": {
+          "type": "string",
+          "description": "Why the market is wrong. What do you see that consensus is missing or mispricing?"
+        },
+        "key_forces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 3,
+          "description": "3+ key drivers of the thesis"
+        },
+        "kill_conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["condition", "threshold"],
+            "properties": {
+              "condition": {
+                "type": "string",
+                "description": "Observable, measurable trigger. Not a calendar date."
+              },
+              "threshold": {
+                "type": "string",
+                "description": "Specific numeric or factual threshold (e.g., 'gross margin < 60% for 2 consecutive quarters')"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["exit_full", "exit_half", "review_immediately"],
+                "default": "review_immediately"
+              }
+            }
+          },
+          "minItems": 1,
+          "description": "Conditions under which the thesis is invalidated. Observable and measurable."
+        },
+        "target_irr_pct": {
+          "type": "number",
+          "description": "Target annualized IRR in percent. Long >= 15%, Short >= 20-25%."
+        },
+        "action_price": {
+          "type": "number",
+          "description": "Price at which the trade becomes attractive"
+        },
+        "entry_rules": {
+          "type": "string",
+          "description": "Specific conditions for pulling the trigger (e.g., 'buy first tranche at $180, add at $170 if thesis intact')"
+        },
+        "dna_rating": {
+          "type": "string",
+          "enum": ["S", "A", "B", "C"],
+          "description": "OPRMS DNA (asset quality) rating. S=25%, A=15%, B=7%, C=2% max position."
+        },
+        "timing_rating": {
+          "type": "string",
+          "enum": ["S", "A", "B", "C"],
+          "description": "OPRMS Timing rating. S=1.0-1.5x, A=0.8-1.0x, B=0.4-0.6x, C=0.1-0.3x coefficient."
+        },
+        "target_position_pct": {
+          "type": "number",
+          "description": "Planned position size as percent of total capital. Must not exceed DNA_cap * Timing_coeff."
+        },
+        "evidence_sources": {
+          "type": "object",
+          "required": ["primary", "total_count"],
+          "properties": {
+            "primary": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["type", "description"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["ceo_interview", "earnings_call", "conference", "glassdoor", "customer_feedback", "patent_filing", "job_posting", "insider_trading", "other"]
+                  },
+                  "description": { "type": "string" },
+                  "url": { "type": "string", "format": "uri" },
+                  "date": { "type": "string", "format": "date" }
+                }
+              },
+              "minItems": 3,
+              "description": "3+ primary sources required"
+            },
+            "total_count": {
+              "type": "integer",
+              "minimum": 8,
+              "description": "Total evidence sources (primary + secondary). Target 8-10+."
+            }
+          }
+        },
+        "linked_memo_id": {
+          "type": "string",
+          "description": "Reference to the investment memo in Knowledge Base, if one exists"
+        },
+        "strategy_ref": {
+          "type": "string",
+          "description": "Which strategy from the Strategy Library is being used (e.g., 'equity/compounder-accumulation')"
+        },
+        "next_earnings_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Next earnings date for the symbol. Used to enforce earnings blackout."
+        }
+      }
+    },
+
+    "execution": {
+      "type": "object",
+      "description": "Filled when orders are placed. May have multiple entries for scaled entries.",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["date", "price", "quantity"],
+            "properties": {
+              "date": { "type": "string", "format": "date" },
+              "price": { "type": "number", "description": "Actual fill price" },
+              "quantity": { "type": "number", "description": "Shares or contracts" },
+              "order_type": {
+                "type": "string",
+                "enum": ["market", "limit", "stop_limit", "other"]
+              },
+              "notes": { "type": "string" }
+            }
+          }
+        },
+        "avg_entry_price": {
+          "type": "number",
+          "description": "Volume-weighted average entry price"
+        },
+        "total_quantity": {
+          "type": "number"
+        },
+        "actual_position_pct": {
+          "type": "number",
+          "description": "Actual position size as percent of total capital at entry"
+        },
+        "slippage_bps": {
+          "type": "number",
+          "description": "Slippage from action price in basis points. (actual - planned) / planned * 10000"
+        },
+        "sizing_rationale": {
+          "type": "string",
+          "description": "Why this size? How does it relate to DNA_cap * Timing_coeff?"
+        },
+        "broker": {
+          "type": "string",
+          "description": "Broker used for execution"
+        }
+      }
+    },
+
+    "post_trade": {
+      "type": "object",
+      "description": "Filled when position is fully closed.",
+      "properties": {
+        "exits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["date", "price", "quantity"],
+            "properties": {
+              "date": { "type": "string", "format": "date" },
+              "price": { "type": "number" },
+              "quantity": { "type": "number" },
+              "reason": { "type": "string", "description": "Why this exit (kill condition, target hit, rebalance, etc.)" }
+            }
+          }
+        },
+        "avg_exit_price": { "type": "number" },
+        "realized_pnl": {
+          "type": "number",
+          "description": "Realized P&L in dollars"
+        },
+        "realized_pnl_pct": {
+          "type": "number",
+          "description": "Realized P&L as percent of entry cost"
+        },
+        "hold_period_days": {
+          "type": "integer"
+        },
+        "thesis_accuracy": {
+          "type": "string",
+          "enum": ["validated", "partially_validated", "invalidated"],
+          "description": "Was the thesis correct?"
+        },
+        "kill_condition_triggered": {
+          "type": "string",
+          "description": "Which kill condition triggered the exit, if any. Null if exited for other reasons."
+        },
+        "lessons_extracted": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Key lessons from this trade"
+        },
+        "review_id": {
+          "type": "string",
+          "description": "Link to the post-trade review document in review/"
+        }
+      }
+    }
+  }
+}

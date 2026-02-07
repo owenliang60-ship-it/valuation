@@ -118,72 +118,26 @@ ssh aliyun "tail -30 /root/workspace/Finance/logs/cron_scan.log"
 
 ```
 ~/CC workspace/Finance/
-├── .claude/                    # CC 配置
-│   ├── ongoing.md              # 进行中任务
-│   ├── long-term-memory.md     # L2 项目记忆
-│   ├── patterns.md             # 成功模式库
-│   ├── progress/               # 断点续传
-│   └── settings.json           # 权限配置
-├── CLAUDE.md                   # 本文件
-├── requirements.txt            # Python 依赖
-│
 ├── src/                        # 源代码
 │   ├── data/                   # 数据管道模块
-│   │   ├── fmp_client.py       # FMP API 客户端
-│   │   ├── price_fetcher.py    # 量价数据采集
-│   │   ├── fundamental_fetcher.py  # 基本面采集
-│   │   ├── pool_manager.py     # 股票池管理
-│   │   ├── data_query.py       # 数据查询接口
-│   │   ├── data_validator.py   # 数据验证
-│   │   └── dollar_volume.py    # Dollar Volume 排名
 │   └── indicators/             # 技术指标引擎
-│       ├── engine.py           # 可插拔指标引擎
-│       ├── pmarp.py            # PMARP 指标
-│       └── rvol.py             # RVOL 指标
-│
 ├── scripts/                    # 运维脚本
-│   ├── update_data.py          # 统一数据更新入口
-│   ├── daily_scan.py           # 日频扫描
-│   ├── scan_indicators.py      # 指标扫描
-│   ├── init_database.py        # SQLite 数据库构建
-│   ├── collect_dollar_volume.py
-│   ├── backfill_dollar_volume.py
-│   └── run_*.sh                # Shell wrapper
-│
 ├── config/                     # 配置
-│   └── settings.py             # 股票池/API/数据路径配置
-│
 ├── data/                       # 数据文件
-│   ├── valuation.db            # 公司+财务 SQLite
-│   ├── dollar_volume.db        # Dollar Volume SQLite
-│   ├── price/*.csv             # 日频量价 (77只)
-│   ├── fundamental/*.json      # 基本面数据 (5张表)
-│   └── pool/                   # 股票池管理
-│
-├── reports/                    # Research Desk: 分析报告
-├── knowledge/                  # Knowledge Base: 投资知识
+├── reports/                    # Research Desk
+├── knowledge/                  # Knowledge Base
 ├── trading/                    # Trading Desk
-│   ├── journal/                # 交易日志
-│   └── strategies/             # 策略库
 ├── risk/                       # Risk Desk
-│   └── rules/                  # 风控规则
 ├── portfolio/                  # Portfolio Desk
-│   ├── holdings/               # 持仓管理
-│   └── watchlist/              # 观察列表
-│
-├── docs/                       # 文档
-│   ├── issues/                 # 错题本
-│   └── plans/                  # 设计文档
-├── logs/                       # 日志
-├── sync_to_cloud.sh            # 云端同步脚本
-└── claude-equity-research/     # 股票研究 skill 插件
+├── docs/issues/                # 错题本
+└── sync_to_cloud.sh            # 云端同步脚本
 ```
 
 ---
 
 ## 建设路线图
 
-- [x] **Phase 1**: 物理合并 Valuation → Finance，建立 Desk 骨架 ← 当前
+- [x] **Phase 1**: 物理合并 Valuation → Finance，建立 Desk 骨架
 - [ ] **Phase 2**: 风控 + 交易纪律基建（IPS、止损规则、交易日志模板）
 - [ ] **Phase 3**: 自动化增强（Greeks 监控、P&L 归因、Telegram 告警）
 - [ ] **Phase 4**: AI 研究助手（财报分析、SEC RAG、新闻过滤）
@@ -191,56 +145,9 @@ ssh aliyun "tail -30 /root/workspace/Finance/logs/cron_scan.log"
 
 ---
 
-## 通用工作能力
+## 已知陷阱
 
-### 角色定位
-
-我是中层经理，不是基层执行者。接到需求后：
-1. 主动澄清不明确的点
-2. 评估任务类型、复杂度、并行机会
-3. 提出拆解方案让用户确认
-4. 派发subagent网状推进
-5. 收集结果、处理异常、汇报完成
-
-### 会话启动
-
-1. **读取本地状态** — `.claude/ongoing.md`
-2. **加载记忆** — L1 自动注入；主动读取 L2 (`~/CC workspace/.claude/long-term-memory.md`)
-3. **恢复断点** — `.claude/progress/`
-4. **确认工作目录** — `~/CC workspace/Finance/`
-
-### 核心工作特质
-
-> **在写任何代码之前，在 Planning 模式下无尽地审问用户的想法。不要假设任何问题。问问题直到没有假设剩下。**
-
-### 注意力分级
-
-| 级别 | 含义 | 行为 |
-|------|------|------|
-| 🟢 自决 | 纯数据处理/格式细节 | 自己决定，事后简要汇报 |
-| 🟡 确认 | 有多种合理分析角度/策略选择 | 列出选项，等用户选择 |
-| 🔴 等待 | 需要用户提供信息或投资判断 | 明确说明缺什么，暂停该任务 |
-
----
-
-## 记忆系统
-
-| 层级 | 位置 | 说明 |
-|------|------|------|
-| **L1** | `MEMORY.md` (自动注入) | 热索引，200行限制 |
-| **L2** | `~/CC workspace/.claude/long-term-memory.md` | 完整记忆，`/log` 写入 |
-| **L3** | Heptabase | 归档+搜索，`/journal` 写入 |
-
----
-
-## 错误防范
-
-**代码复用检查** — 执行任何任务前必须先问自己：
-1. 是否有现有代码可以直接调用？→ 优先直接调用
-2. 是否有现有模块可以导入使用？→ 其次导入使用
-3. 以上都没有才考虑重新编写
-
-**已知陷阱**（详见 `docs/issues/`）：
+详见 `docs/issues/`：
 - `.bashrc` 非交互 shell 不加载环境变量 → 用 `.env` 文件
 - `.gitignore` 的 `data/` 会匹配 `src/data/` → 用 `/data/` 只匹配根目录
 - FMP Screener API 只返回 ~976 只（非 3000+），不影响 Top 200 质量
@@ -250,6 +157,4 @@ ssh aliyun "tail -30 /root/workspace/Finance/logs/cron_scan.log"
 - 投资建议仅供参考，最终决策由用户做出
 - 金融数据有时效性，注明数据获取时间
 - 期权策略要明确标注风险敞口
-- 宏观分析要区分事实与观点
-- 数据分析结果要可复现
 - API 调用串行执行，间隔 2 秒防限流
