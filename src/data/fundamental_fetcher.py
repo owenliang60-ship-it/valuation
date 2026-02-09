@@ -15,8 +15,16 @@ from typing import Optional, List, Dict
 import sys
 sys.path.insert(0, str(__file__).rsplit("/src", 1)[0])
 from config.settings import FUNDAMENTAL_DIR
-from src.data.fmp_client import fmp_client
 from src.data.pool_manager import get_symbols
+
+# Use tool registry instead of direct fmp_client (Phase 1 migration)
+try:
+    from terminal.tools import registry
+    USE_REGISTRY = True
+except ImportError:
+    # Fallback to direct fmp_client if registry not available
+    from src.data.fmp_client import fmp_client
+    USE_REGISTRY = False
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -48,7 +56,11 @@ def _save_json(path: Path, data: Dict):
 
 def fetch_profile(symbol: str) -> Optional[Dict]:
     """获取单只股票的公司概况"""
-    data = fmp_client.get_profile(symbol)
+    if USE_REGISTRY:
+        data = registry.execute("get_profile", symbol=symbol)
+    else:
+        data = fmp_client.get_profile(symbol)
+
     if data:
         data["_updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return data
@@ -92,7 +104,10 @@ def get_profile(symbol: str) -> Optional[Dict]:
 
 def fetch_ratios(symbol: str, limit: int = 4) -> List[Dict]:
     """获取单只股票的财务比率"""
-    data = fmp_client.get_ratios(symbol, limit=limit)
+    if USE_REGISTRY:
+        data = registry.execute("get_ratios", symbol=symbol, limit=limit)
+    else:
+        data = fmp_client.get_ratios(symbol, limit=limit)
     return data
 
 
@@ -134,7 +149,10 @@ def get_ratios(symbol: str) -> List[Dict]:
 
 def fetch_income(symbol: str, period: str = "quarter", limit: int = 8) -> List[Dict]:
     """获取收入报表"""
-    data = fmp_client.get_income_statement(symbol, period=period, limit=limit)
+    if USE_REGISTRY:
+        data = registry.execute("get_income_statement", symbol=symbol, period=period, limit=limit)
+    else:
+        data = fmp_client.get_income_statement(symbol, period=period, limit=limit)
     return data
 
 
@@ -176,7 +194,10 @@ def get_income(symbol: str) -> List[Dict]:
 
 def fetch_balance_sheet(symbol: str, period: str = "quarter", limit: int = 8) -> List[Dict]:
     """获取资产负债表"""
-    data = fmp_client.get_balance_sheet(symbol, period=period, limit=limit)
+    if USE_REGISTRY:
+        data = registry.execute("get_balance_sheet", symbol=symbol, period=period, limit=limit)
+    else:
+        data = fmp_client.get_balance_sheet(symbol, period=period, limit=limit)
     return data
 
 
@@ -218,7 +239,10 @@ def get_balance_sheet(symbol: str) -> List[Dict]:
 
 def fetch_cash_flow(symbol: str, period: str = "quarter", limit: int = 8) -> List[Dict]:
     """获取现金流量表"""
-    data = fmp_client.get_cash_flow(symbol, period=period, limit=limit)
+    if USE_REGISTRY:
+        data = registry.execute("get_cash_flow", symbol=symbol, period=period, limit=limit)
+    else:
+        data = fmp_client.get_cash_flow(symbol, period=period, limit=limit)
     return data
 
 

@@ -8,25 +8,16 @@
 最终仓位 = 总资产 x DNA上限 x Timing系数
 ```
 
-## Y 轴 — 资产基因 (DNA)
+## 完整规范
 
-| 等级 | 名称 | 仓位上限 | 特征 |
-|------|------|---------|------|
-| S | 圣杯 | 25% | 改变人类进程的超级核心资产 |
-| A | 猛将 | 15% | 强周期龙头，细分赛道霸主 |
-| B | 黑马 | 7% | 强叙事驱动，赔率高但不确定 |
-| C | 跟班 | 2% | 补涨逻辑，基本不做 |
+**详见**: [`models.py`](models.py) — 包含完整数据模型和文档字符串
 
-## X 轴 — 时机系数 (Timing)
+- `DNARating`: Y 轴（资产基因）— S/A/B/C 等级 + 仓位上限
+- `TimingRating`: X 轴（时机系数）— S/A/B/C 等级 + 系数范围
+- `OPRMSRating`: 单只股票的评级
+- `PositionSize`: 仓位计算结果
 
-| 等级 | 名称 | 系数范围 | 特征 |
-|------|------|---------|------|
-| S | 千载难逢 | 1.0-1.5 | 历史性时刻，暴跌坑底/突破 |
-| A | 趋势确立 | 0.8-1.0 | 主升浪确认，右侧突破 |
-| B | 正常波动 | 0.4-0.6 | 回调支撑，震荡 |
-| C | 垃圾时间 | 0.1-0.3 | 左侧磨底，无催化剂 |
-
-## 用法
+## 快速示例
 
 ```python
 from knowledge.oprms import calculate_position_size, DNARating, TimingRating
@@ -42,11 +33,11 @@ result = calculate_position_size(
 # result.target_position_usd = $675,000
 ```
 
-## 文件说明
+## 模块结构
 
 | 文件 | 职能 |
 |------|------|
-| `models.py` | 数据模型: DNARating, TimingRating, OPRMSRating, PositionSize |
+| **`models.py`** | **数据模型（单一数据源）** |
 | `ratings.py` | 核心引擎: 仓位计算, 灵敏度表, JSON 读写 |
 | `changelog.py` | 变更日志: JSONL 追加, 按 symbol 查询历史 |
 | `integration.py` | 集成规范: Portfolio Desk JSON schema + 导出 |
@@ -56,3 +47,7 @@ result = calculate_position_size(
 - 评级数据: `data/ratings/oprms.json`
 - 变更日志: `data/ratings/oprms_changelog.jsonl`
 - Portfolio 导出: `data/ratings/portfolio_export.json`
+
+## 知识镜像
+
+Heptabase "未来资本"白板包含 OPRMS 的可视化版本（只读镜像，via MCP 同步）。代码中的 `models.py` 是单一数据源。
