@@ -192,6 +192,37 @@ def get_analyses(symbol: str) -> List[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Alpha Layer (Layer 2) analyses
+# ---------------------------------------------------------------------------
+
+def save_alpha_package(symbol: str, alpha_data: dict) -> Path:
+    """
+    Save Layer 2 analysis to data/companies/{SYM}/analyses/{ts}_alpha.json.
+
+    Returns the path to the saved file.
+    """
+    d = get_company_dir(symbol)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = d / "analyses" / f"{ts}_alpha.json"
+    alpha_data["symbol"] = symbol.upper()
+    alpha_data["saved_at"] = datetime.now().isoformat()
+    _write_json(path, alpha_data)
+    logger.info(f"Saved alpha package for {symbol}: {path.name}")
+    return path
+
+
+def get_latest_alpha(symbol: str) -> Optional[dict]:
+    """Get the most recent Layer 2 analysis for a ticker."""
+    d = _COMPANIES_DIR / symbol.upper() / "analyses"
+    if not d.exists():
+        return None
+    alpha_files = sorted(d.glob("*_alpha.json"), reverse=True)
+    if not alpha_files:
+        return None
+    return _read_json(alpha_files[0])
+
+
+# ---------------------------------------------------------------------------
 # Debates
 # ---------------------------------------------------------------------------
 

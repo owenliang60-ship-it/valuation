@@ -18,6 +18,7 @@ from terminal.company_db import (
 from terminal.pipeline import (
     collect_data,
     prepare_lens_prompts,
+    prepare_alpha_prompts,
     prepare_memo_skeleton,
     calculate_position,
     DataPackage,
@@ -44,8 +45,9 @@ def analyze_ticker(
     - "quick":    Data + indicators snapshot (~5 sec)
     - "standard": + 6 lens prompts for Claude to run
     - "full":     + debate prompts + memo skeleton + scoring rubric
+    - "alpha":    + Layer 2 second-order thinking (red team + cycle + bet)
 
-    Returns a dict with data and (for standard/full) prompt sequences.
+    Returns a dict with data and (for standard/full/alpha) prompt sequences.
     Creates a scratchpad log for full analysis tracking.
     """
     symbol = symbol.upper()
@@ -98,7 +100,7 @@ def analyze_ticker(
                 from terminal.macro_briefing import generate_briefing_prompt, detect_signals
                 signals = detect_signals(data_pkg.macro)
                 active_signals = [s for s in signals if s.fired]
-                if active_signals or depth in ("standard", "full"):
+                if active_signals or depth in ("standard", "full", "alpha"):
                     briefing_prompt = generate_briefing_prompt(data_pkg.macro, signals)
                     result["macro_briefing_prompt"] = briefing_prompt
                     result["macro_signals"] = [
@@ -118,8 +120,8 @@ def analyze_ticker(
             except Exception as e:
                 logger.warning(f"Macro briefing generation failed: {e}")
 
-        # Phase 2: Lens prompts (standard and full)
-        if depth in ("standard", "full"):
+        # Phase 2: Lens prompts (standard, full, alpha)
+        if depth in ("standard", "full", "alpha"):
             scratchpad.log_reasoning(
                 "phase_2_start",
                 f"Preparing lens analysis prompts for {depth} depth"
@@ -137,8 +139,8 @@ def analyze_ticker(
                 f"Prepared {len(prompts)} lens prompts: {[p['lens_name'] for p in prompts]}"
             )
 
-        # Phase 3+: Debate + memo (full only)
-        if depth == "full":
+        # Phase 3+: Debate + memo (full and alpha)
+        if depth in ("full", "alpha"):
             scratchpad.log_reasoning(
                 "phase_3_start",
                 "Full depth: enabling debate + memo generation"
@@ -162,6 +164,42 @@ def analyze_ticker(
 
         # Context summary for Claude
         result["context_summary"] = data_pkg.format_context()
+
+        # Phase 6: Layer 2 — Second-Order Thinking (alpha only)
+        if depth == "alpha":
+            scratchpad.log_reasoning(
+                "phase_6_start",
+                "Alpha depth: enabling Layer 2 second-order thinking"
+            )
+
+            alpha_prompts = prepare_alpha_prompts(
+                symbol=symbol,
+                data_package=data_pkg,
+                l1_memo_summary="[Claude fills from L1 memo executive summary]",
+                l1_verdict="[Claude fills from L1 debate verdict: BUY/HOLD/SELL]",
+                l1_key_forces="[Claude fills from L1 debate: 3 key forces]",
+                l1_oprms=record.oprms if record and record.has_data else None,
+            )
+            result["alpha_prompts"] = alpha_prompts
+            result["alpha_instructions"] = (
+                "LAYER 2 — SECOND-ORDER THINKING\n\n"
+                "After completing ALL Layer 1 stages (lenses → debate → memo → OPRMS),\n"
+                "run these 3 prompts SEQUENTIALLY:\n\n"
+                "1. Fill in l1_memo_summary, l1_verdict, l1_key_forces from your L1 output\n"
+                "2. Run Prompt A (Red Team) — it's fully rendered in alpha_prompts[0]['prompt']\n"
+                "3. For Prompt B (Cycle), call:\n"
+                "   from knowledge.alpha.cycle_pendulum import generate_cycle_prompt\n"
+                "   prompt = generate_cycle_prompt(**alpha_prompts[1]['prompt_args'], red_team_summary=YOUR_A_OUTPUT)\n"
+                "4. For Prompt C (Bet), call:\n"
+                "   from knowledge.alpha.asymmetric_bet import generate_bet_prompt\n"
+                "   prompt = generate_bet_prompt(**alpha_prompts[2]['prompt_args'], red_team_summary=YOUR_A_OUTPUT, cycle_summary=YOUR_B_OUTPUT)\n"
+                "5. After all 3 phases, save with terminal.company_db.save_alpha_package()\n"
+            )
+
+            scratchpad.log_reasoning(
+                "phase_6_complete",
+                f"Prepared {len(alpha_prompts)} alpha prompts"
+            )
 
     except Exception as e:
         # Log error before re-raising
