@@ -152,14 +152,23 @@ def update_all_prices(symbols: List[str] = None, force_full: bool = False) -> di
     return {"success": success, "failed": failed}
 
 
-def get_price_df(symbol: str, days: int = None) -> Optional[pd.DataFrame]:
+def get_price_df(symbol: str, days: int = None, max_age_days: int = 3) -> Optional[pd.DataFrame]:
     """
-    获取量价数据 (优先用缓存)
-    days: 返回最近 N 天的数据，None 返回全部
+    获取量价数据 (优先用缓存，自动检查新鲜度)
+
+    Args:
+        days: 返回最近 N 天的数据，None 返回全部
+        max_age_days: 缓存最大年龄(天)，超过则自动增量更新。
+                      默认 3 天覆盖周末。设为 0 或 None 跳过检查。
     """
     df = load_price_cache(symbol)
-    if df is None:
-        # 尝试从 API 获取
+    if df is not None and max_age_days:
+        latest = pd.to_datetime(df["date"].iloc[0])
+        age = (datetime.now() - latest).days
+        if age > max_age_days:
+            logger.info(f"{symbol}: 缓存过期 ({age}天 > {max_age_days}天限制), 自动刷新")
+            df = fetch_and_update_price(symbol)
+    elif df is None:
         df = fetch_and_update_price(symbol)
 
     if df is None or df.empty:

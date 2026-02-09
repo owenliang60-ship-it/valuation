@@ -132,10 +132,19 @@ class DataPackage:
 
         # Price
         if self.price:
+            source = self.price.get("price_source", "cache")
+            price_line = (
+                f"- Latest: ${self.price.get('latest_close', 'N/A')} "
+                f"({self.price.get('latest_date', 'N/A')}) [source: {source}]"
+            )
+            if source == "realtime" and self.price.get("price_deviation"):
+                rt = self.price.get("realtime_price", "N/A")
+                dev = self.price.get("price_deviation", 0)
+                # Show what the cache had before replacement
+                price_line += f"\n- Cache was stale (deviation: {dev}%, replaced with realtime ${rt})"
             sections.append(
                 f"### Price Data\n"
-                f"- Latest: ${self.price.get('latest_close', 'N/A')} "
-                f"({self.price.get('latest_date', 'N/A')})\n"
+                f"{price_line}\n"
                 f"- Records: {self.price.get('records', 0)} days"
             )
 
@@ -322,6 +331,41 @@ def collect_data(
         logger.warning(f"Data Desk query failed for {symbol}: {e}")
         if scratchpad:
             scratchpad.log_reasoning("error", f"Data Desk query failed: {e}")
+
+    # Realtime price sanity check
+    if pkg.price and pkg.price.get("latest_close"):
+        try:
+            from src.data.fmp_client import fmp_client as _fmp
+            realtime = _fmp.get_realtime_price(symbol)
+            if realtime:
+                cached_price = pkg.price["latest_close"]
+                deviation = abs(cached_price - realtime) / realtime
+                pkg.price["realtime_price"] = realtime
+                pkg.price["price_deviation"] = round(deviation * 100, 2)
+                if deviation > 0.02:  # >2% deviation
+                    logger.warning(
+                        f"{symbol}: 缓存价 ${cached_price:.2f} vs 实时 ${realtime:.2f} "
+                        f"(偏差 {deviation:.1%}), 使用实时价格"
+                    )
+                    pkg.price["latest_close"] = realtime
+                    pkg.price["price_source"] = "realtime"
+                else:
+                    pkg.price["price_source"] = "cache"
+                if scratchpad:
+                    scratchpad.log_tool_call(
+                        "get_realtime_price",
+                        {"symbol": symbol},
+                        {
+                            "realtime": realtime,
+                            "cached": cached_price,
+                            "deviation_pct": pkg.price["price_deviation"],
+                            "source": pkg.price["price_source"],
+                        }
+                    )
+        except Exception as e:
+            logger.warning(f"Realtime price check failed for {symbol}: {e}")
+            if scratchpad:
+                scratchpad.log_reasoning("error", f"Realtime price check failed: {e}")
 
     # Indicators
     try:

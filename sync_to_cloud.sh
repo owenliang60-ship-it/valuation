@@ -19,6 +19,21 @@ sync_code() {
         --exclude '*.pyc' \
         "$LOCAL_DIR/scripts/" "$REMOTE/scripts/"
     rsync -avz "$LOCAL_DIR/config/settings.py" "$REMOTE/config/"
+
+    # 分析引擎
+    rsync -avz --delete \
+        --exclude '__pycache__' --exclude '*.pyc' \
+        "$LOCAL_DIR/terminal/" "$REMOTE/terminal/"
+    rsync -avz --delete \
+        --exclude '__pycache__' --exclude '*.pyc' \
+        "$LOCAL_DIR/knowledge/" "$REMOTE/knowledge/"
+    rsync -avz --delete \
+        --exclude '__pycache__' --exclude '*.pyc' \
+        "$LOCAL_DIR/tests/" "$REMOTE/tests/"
+
+    # 依赖文件
+    rsync -avz "$LOCAL_DIR/requirements.txt" "$REMOTE/"
+
     echo "✅ 代码同步完成"
 }
 
@@ -38,8 +53,10 @@ verify_cloud() {
     ssh aliyun "cd /root/workspace/Finance && python3 -c \"
 from config.settings import FMP_API_KEY
 from src.data.pool_manager import get_symbols
+from terminal.pipeline import collect_data
 print(f'API Key: OK')
 print(f'股票池: {len(get_symbols())} 只')
+print(f'Pipeline: OK')
 \""
     echo "✅ 云端验证通过"
 }

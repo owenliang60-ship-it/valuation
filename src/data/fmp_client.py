@@ -123,6 +123,13 @@ class FMPClient:
             return data[0]
         return None
 
+    def get_realtime_price(self, symbol: str) -> Optional[float]:
+        """获取实时价格 (用于 sanity check，单次 API 调用)"""
+        data = self._request("profile", {"symbol": symbol})
+        if data and isinstance(data, list) and len(data) > 0:
+            return data[0].get("price")
+        return None
+
     # ========== 基本面数据相关 ==========
 
     def get_profile(self, symbol: str) -> Optional[Dict]:
