@@ -390,12 +390,12 @@ def collect_data(
         # Analyst estimates
         try:
             result = registry.execute("get_analyst_estimates", symbol=symbol, period="quarter", limit=4)
-            if result.get("success"):
-                pkg.analyst_estimates = result.get("data", [])
+            if result:
+                pkg.analyst_estimates = result
                 if scratchpad:
                     scratchpad.log_tool_call(
                         "get_analyst_estimates", {"symbol": symbol},
-                        {"count": len(pkg.analyst_estimates or [])}
+                        {"count": len(pkg.analyst_estimates)}
                     )
         except Exception as e:
             logger.warning(f"Analyst estimates fetch failed for {symbol}: {e}")
@@ -405,8 +405,8 @@ def collect_data(
         # Insider trades
         try:
             result = registry.execute("get_insider_trades", symbol=symbol, limit=20)
-            if result.get("success"):
-                pkg.insider_trades = result.get("data", [])
+            if result:
+                pkg.insider_trades = result
                 if scratchpad:
                     scratchpad.log_tool_call(
                         "get_insider_trades", {"symbol": symbol},
@@ -420,8 +420,8 @@ def collect_data(
         # Stock news
         try:
             result = registry.execute("get_stock_news", tickers=symbol, limit=10)
-            if result.get("success"):
-                pkg.news = result.get("data", [])
+            if result:
+                pkg.news = result
                 if scratchpad:
                     scratchpad.log_tool_call(
                         "get_stock_news", {"tickers": symbol},
@@ -439,13 +439,12 @@ def collect_data(
             from_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
             to_date = (today + timedelta(days=30)).strftime("%Y-%m-%d")
             result = registry.execute("get_earnings_calendar", from_date=from_date, to_date=to_date)
-            if result.get("success"):
-                all_earnings = result.get("data", [])
-                pkg.earnings_calendar = [e for e in all_earnings if e.get("symbol") == symbol]
+            if result:
+                pkg.earnings_calendar = [e for e in result if e.get("symbol") == symbol]
                 if scratchpad:
                     scratchpad.log_tool_call(
                         "get_earnings_calendar", {"from_date": from_date, "to_date": to_date},
-                        {"total": len(all_earnings), "filtered": len(pkg.earnings_calendar or [])}
+                        {"total": len(result), "filtered": len(pkg.earnings_calendar or [])}
                     )
         except Exception as e:
             logger.warning(f"Earnings calendar fetch failed for {symbol}: {e}")

@@ -182,16 +182,16 @@ class TestCollectDataFMPEnrichment:
         """Create a mock registry that returns configured results."""
         if results is None:
             results = {
-                "get_analyst_estimates": {"success": True, "data": SAMPLE_ESTIMATES},
-                "get_insider_trades": {"success": True, "data": SAMPLE_INSIDER_TRADES},
-                "get_stock_news": {"success": True, "data": SAMPLE_NEWS},
-                "get_earnings_calendar": {"success": True, "data": SAMPLE_EARNINGS_CALENDAR},
+                "get_analyst_estimates": SAMPLE_ESTIMATES,
+                "get_insider_trades": SAMPLE_INSIDER_TRADES,
+                "get_stock_news": SAMPLE_NEWS,
+                "get_earnings_calendar": SAMPLE_EARNINGS_CALENDAR,
             }
 
         mock_registry = mock.MagicMock()
 
         def execute_side_effect(tool_name, **kwargs):
-            return results.get(tool_name, {"success": False})
+            return results.get(tool_name, [])
 
         mock_registry.execute.side_effect = execute_side_effect
         return mock_registry
@@ -256,10 +256,10 @@ class TestCollectDataFMPEnrichment:
     ):
         """If one FMP tool fails, others should still work."""
         results = {
-            "get_analyst_estimates": {"success": True, "data": SAMPLE_ESTIMATES},
-            "get_insider_trades": {"success": True, "data": SAMPLE_INSIDER_TRADES},
-            "get_stock_news": {"success": True, "data": SAMPLE_NEWS},
-            "get_earnings_calendar": {"success": True, "data": SAMPLE_EARNINGS_CALENDAR},
+            "get_analyst_estimates": SAMPLE_ESTIMATES,
+            "get_insider_trades": SAMPLE_INSIDER_TRADES,
+            "get_stock_news": SAMPLE_NEWS,
+            "get_earnings_calendar": SAMPLE_EARNINGS_CALENDAR,
         }
         mock_registry = self._make_mock_registry(results)
         # Make insider trades raise
@@ -294,12 +294,12 @@ class TestCollectDataFMPEnrichment:
         self, mock_get_registry, mock_stock, mock_indicators,
         mock_macro, mock_company
     ):
-        """If a tool returns success=False, the field should stay at default."""
+        """If a tool returns empty list, the field should stay at default."""
         results = {
-            "get_analyst_estimates": {"success": False, "error": "not found"},
-            "get_insider_trades": {"success": True, "data": SAMPLE_INSIDER_TRADES},
-            "get_stock_news": {"success": True, "data": SAMPLE_NEWS},
-            "get_earnings_calendar": {"success": True, "data": SAMPLE_EARNINGS_CALENDAR},
+            "get_analyst_estimates": [],  # empty = no data
+            "get_insider_trades": SAMPLE_INSIDER_TRADES,
+            "get_stock_news": SAMPLE_NEWS,
+            "get_earnings_calendar": SAMPLE_EARNINGS_CALENDAR,
         }
         mock_registry = self._make_mock_registry(results)
         mock_get_registry.return_value = mock_registry
@@ -310,7 +310,7 @@ class TestCollectDataFMPEnrichment:
 
         pkg = collect_data("NVDA")
 
-        # analyst_estimates should remain None (success=False)
+        # analyst_estimates should remain None (empty list = no data)
         assert pkg.analyst_estimates is None
         # Others should be populated
         assert pkg.insider_trades == SAMPLE_INSIDER_TRADES
