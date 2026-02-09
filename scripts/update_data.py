@@ -29,11 +29,12 @@ def main():
     parser.add_argument("--fundamental", action="store_true", help="更新基本面数据")
     parser.add_argument("--symbols", type=str, help="指定股票代码，逗号分隔")
     parser.add_argument("--force", action="store_true", help="强制全量更新")
+    parser.add_argument("--correlation", action="store_true", help="计算相关性矩阵")
 
     args = parser.parse_args()
 
     # 如果没有指定任何选项，显示帮助
-    if not any([args.all, args.pool, args.price, args.fundamental]):
+    if not any([args.all, args.pool, args.price, args.fundamental, args.correlation]):
         parser.print_help()
         return
 
@@ -64,7 +65,7 @@ def main():
     # 更新量价数据
     if args.all or args.price:
         print("=" * 40)
-        print("Step 2: 更新量价数据")
+        print("Step 2: 更新量价数据 (含基准: SPY, QQQ)")
         print("=" * 40)
         target_symbols = symbols or get_symbols()
         result = update_all_prices(target_symbols, force_full=args.force)
@@ -80,6 +81,17 @@ def main():
         print("=" * 40)
         target_symbols = symbols or get_symbols()
         update_all_fundamentals(target_symbols)
+        print()
+
+    # 计算相关性矩阵
+    if args.all or args.correlation:
+        print("=" * 40)
+        print("Step 4: 计算相关性矩阵")
+        print("=" * 40)
+        from src.analysis.correlation import get_correlation_matrix
+        corr_symbols = symbols or get_symbols()
+        matrix = get_correlation_matrix(corr_symbols, use_cache=False)
+        print(f"\n✅ 相关性矩阵: {len(matrix)} 只股票")
         print()
 
     print(f"{'='*60}")
