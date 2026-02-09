@@ -169,6 +169,66 @@ class FMPClient:
         })
         return data if isinstance(data, list) else []
 
+    def get_earnings_calendar(self, from_date: str = None, to_date: str = None) -> List[Dict]:
+        """
+        获取财报日程
+
+        Args:
+            from_date: 开始日期 (YYYY-MM-DD)
+            to_date: 结束日期 (YYYY-MM-DD)
+        """
+        params = {}
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+        data = self._request("earning_calendar", params)
+        return data if isinstance(data, list) else []
+
+    def get_analyst_estimates(self, symbol: str, period: str = "quarter", limit: int = 4) -> List[Dict]:
+        """
+        获取分析师盈利预期
+
+        Args:
+            symbol: 股票代码
+            period: quarter 或 annual
+            limit: 返回数量
+        """
+        data = self._request("analyst-estimates", {
+            "symbol": symbol,
+            "period": period,
+            "limit": limit
+        })
+        return data if isinstance(data, list) else []
+
+    def get_insider_trades(self, symbol: str, limit: int = 50) -> List[Dict]:
+        """
+        获取内部人交易记录
+
+        Args:
+            symbol: 股票代码
+            limit: 返回数量
+        """
+        data = self._request("insider-trading", {
+            "symbol": symbol,
+            "limit": limit
+        })
+        return data if isinstance(data, list) else []
+
+    def get_stock_news(self, tickers: str = None, limit: int = 50) -> List[Dict]:
+        """
+        获取股票新闻
+
+        Args:
+            tickers: 股票代码（多个用逗号分隔，如 "AAPL,MSFT"）
+            limit: 返回数量
+        """
+        params = {"limit": limit}
+        if tickers:
+            params["tickers"] = tickers
+        data = self._request("stock_news", params)
+        return data if isinstance(data, list) else []
+
 
 # 单例
 fmp_client = FMPClient()
