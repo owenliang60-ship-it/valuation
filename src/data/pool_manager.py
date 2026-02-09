@@ -12,7 +12,10 @@ from typing import List, Dict, Set, Tuple
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/src", 1)[0])
-from config.settings import POOL_DIR, MARKET_CAP_THRESHOLD
+from config.settings import (
+    POOL_DIR, MARKET_CAP_THRESHOLD,
+    EXCLUDED_SECTORS, EXCLUDED_INDUSTRIES, PERMANENTLY_EXCLUDED,
+)
 from src.data.fmp_client import fmp_client
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -81,9 +84,44 @@ def save_history(history: List[Dict]):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 
+def _apply_filters(stocks: List[Dict]) -> List[Dict]:
+    """
+    应用行业/个股过滤规则，排除不符合条件的股票。
+    使用 config/settings.py 中的 EXCLUDED_SECTORS, EXCLUDED_INDUSTRIES, PERMANENTLY_EXCLUDED。
+    """
+    filtered = []
+    excluded_count = 0
+    for s in stocks:
+        symbol = s.get("symbol", "")
+        sector = s.get("sector", "")
+        industry = s.get("industry", "")
+
+        if symbol in PERMANENTLY_EXCLUDED:
+            excluded_count += 1
+            continue
+        if sector in EXCLUDED_SECTORS:
+            excluded_count += 1
+            continue
+        if industry in EXCLUDED_INDUSTRIES:
+            excluded_count += 1
+            continue
+        filtered.append(s)
+
+    if excluded_count:
+        logger.info(f"过滤规则排除 {excluded_count} 只股票")
+    return filtered
+
+
+def _get_analysis_stocks(stocks: List[Dict]) -> List[Dict]:
+    """提取通过分析加入的股票 (source=analysis)，这些不会被池刷新删除。"""
+    return [s for s in stocks if s.get("source") == "analysis"]
+
+
 def refresh_universe() -> Tuple[List[Dict], List[str], List[str]]:
     """
     刷新股票池
+    - 应用行业/个股过滤规则
+    - 保留通过分析加入的股票 (source=analysis)
     返回: (新股票池, 新进入的股票, 退出的股票)
     """
     logger.info(f"开始刷新股票池 (市值阈值: ${MARKET_CAP_THRESHOLD/1e9:.0f}B)")
@@ -98,11 +136,28 @@ def refresh_universe() -> Tuple[List[Dict], List[str], List[str]]:
 
     # 去重
     new_stocks = _deduplicate_stocks(raw_stocks)
-    new_stocks = sorted(new_stocks, key=lambda x: x.get("marketCap", 0), reverse=True)
     logger.info(f"去重后 {len(new_stocks)} 只股票")
 
-    # 对比变化
+    # 应用过滤规则
+    new_stocks = _apply_filters(new_stocks)
+    logger.info(f"过滤后 {len(new_stocks)} 只股票")
+
+    new_stocks = sorted(new_stocks, key=lambda x: x.get("marketCap", 0), reverse=True)
+
+    # 保留分析来源的股票
     old_stocks = load_universe()
+    analysis_stocks = _get_analysis_stocks(old_stocks)
+    screener_symbols = {s.get("symbol") for s in new_stocks}
+    preserved = []
+    for s in analysis_stocks:
+        if s.get("symbol") not in screener_symbols:
+            preserved.append(s)
+    if preserved:
+        symbols = [s.get("symbol") for s in preserved]
+        logger.info(f"保留 {len(preserved)} 只分析来源股票: {symbols}")
+        new_stocks.extend(preserved)
+
+    # 对比变化
     old_symbols = {s.get("symbol") for s in old_stocks}
     new_symbols = {s.get("symbol") for s in new_stocks}
 

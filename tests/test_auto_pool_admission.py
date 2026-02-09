@@ -23,6 +23,9 @@ from src.data.pool_manager import (
     save_universe,
     load_history,
     save_history,
+    refresh_universe,
+    _apply_filters,
+    _get_analysis_stocks,
     UNIVERSE_FILE,
     HISTORY_FILE,
 )
@@ -299,3 +302,158 @@ class TestCollectDataAutoAdmit:
 
         # DataPackage should have data
         assert pkg.symbol == "VRT"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _apply_filters
+# ---------------------------------------------------------------------------
+
+class TestApplyFilters:
+    """Tests for pool sector/industry/exclusion filtering."""
+
+    def test_excludes_energy_sector(self):
+        stocks = [
+            {"symbol": "XOM", "sector": "Energy", "industry": "Oil & Gas"},
+            {"symbol": "AAPL", "sector": "Technology", "industry": "Consumer Electronics"},
+        ]
+        result = _apply_filters(stocks)
+        symbols = [s["symbol"] for s in result]
+        assert "XOM" not in symbols
+        assert "AAPL" in symbols
+
+    def test_excludes_consumer_defensive(self):
+        stocks = [
+            {"symbol": "PG", "sector": "Consumer Defensive", "industry": "Household"},
+            {"symbol": "NVDA", "sector": "Technology", "industry": "Semiconductors"},
+        ]
+        result = _apply_filters(stocks)
+        symbols = [s["symbol"] for s in result]
+        assert "PG" not in symbols
+        assert "NVDA" in symbols
+
+    def test_excludes_permanently_excluded(self):
+        stocks = [
+            {"symbol": "GEGGL", "sector": "Technology", "industry": "Something"},
+            {"symbol": "CRM", "sector": "Technology", "industry": "Software"},
+            {"symbol": "AAPL", "sector": "Technology", "industry": "Consumer Electronics"},
+        ]
+        result = _apply_filters(stocks)
+        symbols = [s["symbol"] for s in result]
+        assert "GEGGL" not in symbols
+        assert "CRM" not in symbols
+        assert "AAPL" in symbols
+
+    def test_excludes_excluded_industries(self):
+        stocks = [
+            {"symbol": "UNP", "sector": "Industrials", "industry": "Railroads"},
+            {"symbol": "AAPL", "sector": "Technology", "industry": "Consumer Electronics"},
+        ]
+        result = _apply_filters(stocks)
+        symbols = [s["symbol"] for s in result]
+        assert "UNP" not in symbols
+        assert "AAPL" in symbols
+
+    def test_empty_list(self):
+        assert _apply_filters([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Tests: refresh_universe preserves analysis stocks
+# ---------------------------------------------------------------------------
+
+class TestRefreshUniversePreservesAnalysis:
+    """Tests for refresh_universe() preserving analysis-source stocks."""
+
+    def test_preserves_analysis_stocks(self):
+        """Stocks with source=analysis survive pool refresh."""
+        # Pre-populate universe with an analysis-sourced stock
+        pool = EXISTING_POOL + [
+            {
+                "symbol": "VRT",
+                "companyName": "Vertiv Holdings Co",
+                "marketCap": 45_000_000_000,
+                "sector": "Industrials",
+                "industry": "Electrical Equipment",
+                "source": "analysis",
+                "added_at": "2026-02-08 10:00:00",
+            },
+        ]
+        save_universe(pool)
+
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+            # Screener returns only AAPL and MSFT (VRT not in screener)
+            mock_fmp.get_large_cap_stocks.return_value = [
+                {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
+                 "sector": "Technology", "industry": "Consumer Electronics"},
+                {"symbol": "MSFT", "companyName": "Microsoft Corp", "marketCap": 3_000e9,
+                 "sector": "Technology", "industry": "Software"},
+            ]
+            new_stocks, entered, exited = refresh_universe()
+
+        symbols = [s["symbol"] for s in new_stocks]
+        assert "VRT" in symbols  # Preserved!
+        assert "AAPL" in symbols
+        assert "MSFT" in symbols
+        assert "VRT" not in exited
+
+    def test_filters_excluded_sectors(self):
+        """refresh_universe() applies sector filters."""
+        save_universe([])
+
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+            mock_fmp.get_large_cap_stocks.return_value = [
+                {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
+                 "sector": "Technology", "industry": "Consumer Electronics"},
+                {"symbol": "XOM", "companyName": "Exxon Mobil", "marketCap": 500e9,
+                 "sector": "Energy", "industry": "Oil & Gas"},
+                {"symbol": "PG", "companyName": "Procter & Gamble", "marketCap": 400e9,
+                 "sector": "Consumer Defensive", "industry": "Household"},
+            ]
+            new_stocks, entered, exited = refresh_universe()
+
+        symbols = [s["symbol"] for s in new_stocks]
+        assert "AAPL" in symbols
+        assert "XOM" not in symbols
+        assert "PG" not in symbols
+
+    def test_filters_permanently_excluded(self):
+        """refresh_universe() excludes permanently excluded tickers."""
+        save_universe([])
+
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+            mock_fmp.get_large_cap_stocks.return_value = [
+                {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
+                 "sector": "Technology", "industry": "Consumer Electronics"},
+                {"symbol": "CRM", "companyName": "Salesforce", "marketCap": 300e9,
+                 "sector": "Technology", "industry": "Application Software"},
+            ]
+            new_stocks, entered, exited = refresh_universe()
+
+        symbols = [s["symbol"] for s in new_stocks]
+        assert "AAPL" in symbols
+        assert "CRM" not in symbols
+
+    def test_analysis_stock_not_duplicated_if_in_screener(self):
+        """If analysis stock also appears in screener, no duplicate."""
+        pool = EXISTING_POOL + [
+            {
+                "symbol": "MSFT",
+                "companyName": "Microsoft Corp",
+                "marketCap": 3_000e9,
+                "sector": "Technology",
+                "source": "analysis",
+            },
+        ]
+        save_universe(pool)
+
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+            mock_fmp.get_large_cap_stocks.return_value = [
+                {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
+                 "sector": "Technology", "industry": "Consumer Electronics"},
+                {"symbol": "MSFT", "companyName": "Microsoft Corp", "marketCap": 3_000e9,
+                 "sector": "Technology", "industry": "Software"},
+            ]
+            new_stocks, entered, exited = refresh_universe()
+
+        symbols = [s["symbol"] for s in new_stocks]
+        assert symbols.count("MSFT") == 1  # No duplicate
