@@ -54,12 +54,11 @@ def format_prompt(lens: InvestmentLens, ticker: str, context: Dict = None) -> st
 
 
 def get_all_lenses() -> List[InvestmentLens]:
-    """返回全部 6 个投资哲学透镜"""
+    """返回全部 5 个投资哲学透镜（宏观分析由 Stage 0 简报承担，不再作为透镜）"""
     from knowledge.philosophies.quality_compounder import get_lens as qc
     from knowledge.philosophies.imaginative_growth import get_lens as ig
     from knowledge.philosophies.fundamental_ls import get_lens as fls
     from knowledge.philosophies.deep_value import get_lens as dv
     from knowledge.philosophies.event_driven import get_lens as ed
-    from knowledge.philosophies.macro_tactical import get_lens as mt
 
-    return [qc(), ig(), fls(), dv(), ed(), mt()]
+    return [qc(), ig(), fls(), dv(), ed()]

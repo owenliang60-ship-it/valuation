@@ -1,7 +1,7 @@
 """
 Macro Briefing — cross-asset signal detection + briefing prompt generation.
 
-Stage 0 of the analysis pipeline: runs BEFORE the 6 lens analyses.
+Stage 0 of the analysis pipeline: runs BEFORE the 5 lens analyses.
 Detects cross-asset patterns from MacroSnapshot data (pure rules, no LLM),
 then generates a structured prompt for Claude to produce a macro narrative.
 
@@ -281,7 +281,7 @@ def generate_briefing_prompt(
     """
     Generate the macro briefing prompt for Claude to respond to.
 
-    This prompt is run BEFORE the 6 lens analyses. Claude's response
+    This prompt is run BEFORE the 5 lens analyses. Claude's response
     becomes the macro narrative injected into all subsequent lens prompts.
     """
     # Format fired signals

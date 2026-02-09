@@ -3,7 +3,7 @@ Analysis pipeline — ticker → data → lens prompts → debate prompts → me
 
 Four depth levels:
 - quick:    Data + indicators only (~5 sec, $0)
-- standard: + 6-lens analysis prompts (~1 min, ~$2)
+- standard: + macro briefing + 5-lens analysis prompts (~1 min, ~$2)
 - full:     + 5-round debate + memo + scoring (~5 min, ~$13-15)
 - alpha:    + Layer 2 second-order thinking (3 prompts, ~$3-5 extra)
 
@@ -189,7 +189,7 @@ class DataPackage:
                 lines.append(f"{i}. {desc}")
             sections.append("\n".join(lines))
 
-        # Macro environment (injected into all 6 lens prompts)
+        # Macro environment (injected into all lens prompts)
         if self.macro is not None:
             sections.append(self.macro.format_for_prompt())
 
@@ -519,8 +519,9 @@ def prepare_lens_prompts(
     lenses: Optional[List[InvestmentLens]] = None,
 ) -> List[Dict[str, str]]:
     """
-    Phase 2: Generate 6 lens analysis prompts with injected data context.
+    Phase 2: Generate 5 lens analysis prompts with injected data context.
 
+    Macro analysis is handled by Stage 0 briefing (not a lens).
     Returns list of {lens_name, prompt} dicts. Claude runs each in conversation.
     """
     if lenses is None:
