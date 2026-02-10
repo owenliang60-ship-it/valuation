@@ -311,3 +311,90 @@ class TestCompileDeepReport:
             alpha_idx = report.index("Second-Order Thinking")
 
             assert macro_idx < research_idx < lens_idx < debate_idx < memo_idx < oprms_idx < alpha_idx
+
+
+class TestDeepAnalyzeTicker:
+    """Tests for commands.deep_analyze_ticker() setup phase."""
+
+    @patch("terminal.commands.collect_data")
+    @patch("terminal.commands.prepare_lens_prompts")
+    def test_returns_expected_keys(self, mock_lenses, mock_collect):
+        mock_pkg = MockDataPackage("MSFT")
+        mock_collect.return_value = mock_pkg
+        mock_lenses.return_value = [
+            {"lens_name": "Quality Compounder", "horizon": "20y", "core_metric": "ROIC", "prompt": "Analyze."},
+        ]
+
+        from terminal.commands import deep_analyze_ticker
+
+        result = deep_analyze_ticker("MSFT")
+
+        assert "research_dir" in result
+        assert "data_context_path" in result
+        assert "research_queries" in result
+        assert "lens_agent_prompts" in result
+        assert "macro_briefing_prompt" in result
+        assert "gemini_prompt" in result
+        assert "context_summary" in result
+
+    @patch("terminal.commands.collect_data")
+    @patch("terminal.commands.prepare_lens_prompts")
+    def test_data_context_file_written(self, mock_lenses, mock_collect, tmp_path):
+        mock_pkg = MockDataPackage("TEST")
+        mock_collect.return_value = mock_pkg
+        mock_lenses.return_value = []
+
+        with patch("terminal.deep_pipeline._COMPANIES_DIR", tmp_path):
+            from terminal.commands import deep_analyze_ticker
+
+            result = deep_analyze_ticker("TEST")
+            assert Path(result["data_context_path"]).exists()
+
+    @patch("terminal.commands.collect_data")
+    @patch("terminal.commands.prepare_lens_prompts")
+    def test_lens_agent_prompts_have_output_paths(self, mock_lenses, mock_collect):
+        mock_pkg = MockDataPackage("MSFT")
+        mock_collect.return_value = mock_pkg
+        mock_lenses.return_value = [
+            {"lens_name": "Quality Compounder", "horizon": "20y", "core_metric": "ROIC", "prompt": "Analyze QC."},
+            {"lens_name": "Deep Value", "horizon": "3-5y", "core_metric": "Book", "prompt": "Analyze DV."},
+        ]
+
+        from terminal.commands import deep_analyze_ticker
+
+        result = deep_analyze_ticker("MSFT")
+        for lap in result["lens_agent_prompts"]:
+            assert "lens_name" in lap
+            assert "agent_prompt" in lap
+            assert "output_path" in lap
+
+    @patch("terminal.commands.collect_data")
+    @patch("terminal.commands.prepare_lens_prompts")
+    def test_research_queries_present(self, mock_lenses, mock_collect):
+        mock_pkg = MockDataPackage("NVDA")
+        mock_pkg.info["companyName"] = "NVIDIA Corporation"
+        mock_pkg.info["industry"] = "Semiconductors"
+        mock_collect.return_value = mock_pkg
+        mock_lenses.return_value = []
+
+        from terminal.commands import deep_analyze_ticker
+
+        result = deep_analyze_ticker("NVDA")
+        queries = result["research_queries"]
+        assert "earnings" in queries
+        assert "competitive" in queries
+        assert "street" in queries
+        assert "NVIDIA" in queries["earnings"] or "NVDA" in queries["earnings"]
+
+    @patch("terminal.commands.collect_data")
+    @patch("terminal.commands.prepare_lens_prompts")
+    def test_gemini_prompt_contains_data(self, mock_lenses, mock_collect):
+        mock_pkg = MockDataPackage("MSFT")
+        mock_collect.return_value = mock_pkg
+        mock_lenses.return_value = []
+
+        from terminal.commands import deep_analyze_ticker
+
+        result = deep_analyze_ticker("MSFT")
+        assert "contrarian" in result["gemini_prompt"].lower()
+        assert "MSFT" in result["gemini_prompt"]
