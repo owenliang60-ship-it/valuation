@@ -99,37 +99,38 @@ def build_lens_agent_prompt(
     slug = _slugify(lens_dict["lens_name"])
     output_path = research_dir / f"lens_{slug}.md"
 
-    return f"""You are an investment analyst running a **{lens_dict["lens_name"]}** analysis.
+    return f"""你是一位投资分析师，正在执行 **{lens_dict["lens_name"]}** 分析。
 
-## Step 1: Read Context Files
+## 第一步：阅读上下文文件
 
-Read these files to understand the company and market context:
-- `{research_dir}/data_context.md` — Financial data, ratios, indicators, macro environment
-- `{research_dir}/earnings.md` — Latest earnings highlights, management quotes, guidance
-- `{research_dir}/competitive.md` — Competitive landscape, peer comparison
-- `{research_dir}/street.md` — Analyst consensus, price targets, key debates
-- `{research_dir}/macro_briefing.md` — Macro environment narrative
+阅读以下文件了解公司和市场背景：
+- `{research_dir}/data_context.md` — 财务数据、比率、技术指标、宏观环境
+- `{research_dir}/earnings.md` — 最新财报要点、管理层评论、指引
+- `{research_dir}/competitive.md` — 竞争格局、同行对比
+- `{research_dir}/street.md` — 分析师共识、目标价、多空争论
+- `{research_dir}/macro_briefing.md` — 宏观环境叙事
 
-If any file is missing or empty, note it but proceed with available data.
+文件缺失或为空则跳过，用已有数据继续。
 
-## Step 2: Run Your Analysis
+## 第二步：执行分析
 
 {lens_dict["prompt"]}
 
-## Step 3: Write Output
+## 第三步：写入输出
 
-Write your complete analysis to: `{output_path}`
+将完整分析写入：`{output_path}`
 
-## Output Requirements
+## 输出要求
 
-- **Minimum 800 words** of substantive analysis (this is critical — do NOT write less)
-- Cite specific numbers from the data (revenue, margins, growth rates, P/E, etc.)
-- Reference management quotes from earnings.md where relevant
-- Compare to competitors using competitive.md data
-- End with:
-  1. A clear **star rating (1-5)** for this lens
-  2. A single-paragraph **key takeaway**
-  3. **2-3 kill conditions** specific to this lens perspective
+- **使用中文撰写**（金融术语可用英文括注，如「护城河 (moat)」）
+- **500-700 字**，追求信息密度而非篇幅
+- **禁止重复研究文件中的原始数据** — 研究文件已提供事实，你只需提供本透镜独有的分析判断
+- 引用数据时一句话概括（如「ROIC 连续 5 年 >25%」），不要复制整段
+- 输出结构：
+  1. **核心论点**（一句话可证伪的判断）
+  2. **独特视角**（只有本透镜能看到的洞察，300-400 字）
+  3. **评级**：星级 (1-5) + BUY/HOLD/PASS 判定 + 目标 IRR
+  4. **触杀条件**：2-3 个本透镜视角下的可观测触发条件
 """
 
 
@@ -157,11 +158,7 @@ def compile_deep_report(symbol: str, research_dir: Path) -> str:
     symbol = symbol.upper()
     date = datetime.now().strftime("%Y-%m-%d")
 
-    # Read all sections
-    data_ctx = _read_research_file(research_dir, "data_context.md")
-    earnings = _read_research_file(research_dir, "earnings.md")
-    competitive = _read_research_file(research_dir, "competitive.md")
-    street = _read_research_file(research_dir, "street.md")
+    # Read all sections (research files excluded from final report — they serve as lens input only)
     gemini = _read_research_file(research_dir, "gemini_contrarian.md")
     macro = _read_research_file(research_dir, "macro_briefing.md")
     lens_qc = _read_research_file(research_dir, "lens_quality_compounder.md")
@@ -177,93 +174,80 @@ def compile_deep_report(symbol: str, research_dir: Path) -> str:
     alpha_bet = _read_research_file(research_dir, "alpha_bet.md")
 
     sections = [
-        f"# {symbol} Deep Research Report",
+        f"# {symbol} 深度研究报告",
         f"",
-        f"**Date**: {date} | **Analyst**: 未来资本 AI Trading Desk",
+        f"**日期**: {date} | **分析师**: 未来资本 AI Trading Desk",
         f"",
         f"---",
         f"",
     ]
 
-    # Macro
+    # I. 宏观环境
     if macro:
-        sections.append("## I. Macro Environment")
+        sections.append("## I. 宏观环境")
         sections.append(macro)
         sections.append("")
 
-    # Earnings + Competitive + Street (research context)
-    if earnings or competitive or street:
-        sections.append("## II. Research Context")
-        if earnings:
-            sections.append(earnings)
-            sections.append("")
-        if competitive:
-            sections.append(competitive)
-            sections.append("")
-        if street:
-            sections.append(street)
-            sections.append("")
-
-    # Five lenses
-    sections.append("## III. Five-Lens Analysis")
+    # II. 五维透镜分析
+    sections.append("## II. 五维透镜分析")
     sections.append("")
     if lens_qc:
-        sections.append("### 1. Quality Compounder")
+        sections.append("### 1. 质量复利")
         sections.append(lens_qc)
         sections.append("")
     if lens_ig:
-        sections.append("### 2. Imaginative Growth")
+        sections.append("### 2. 想象力成长")
         sections.append(lens_ig)
         sections.append("")
     if lens_fls:
-        sections.append("### 3. Fundamental Long/Short")
+        sections.append("### 3. 基本面多空")
         sections.append(lens_fls)
         sections.append("")
     if lens_dv:
-        sections.append("### 4. Deep Value")
+        sections.append("### 4. 深度价值")
         sections.append(lens_dv)
         sections.append("")
     if lens_ed:
-        sections.append("### 5. Event-Driven")
+        sections.append("### 5. 事件驱动")
         sections.append(lens_ed)
         sections.append("")
 
-    # Debate
+    # III. 核心辩论
     if debate:
-        sections.append("## IV. Core Debate")
+        sections.append("## III. 核心辩论")
         sections.append(debate)
         sections.append("")
 
-    # Memo
+    # IV. 投资备忘录
     if memo:
-        sections.append("## V. Investment Memo")
+        sections.append("## IV. 投资备忘录")
         sections.append(memo)
         sections.append("")
 
-    # OPRMS
+    # V. OPRMS 评级与仓位
     if oprms:
-        sections.append("## VI. OPRMS Rating & Position")
+        sections.append("## V. OPRMS 评级与仓位")
         sections.append(oprms)
         sections.append("")
 
-    # Alpha layer
+    # VI. 第二层 — 求导思维
     if alpha_rt or alpha_cy or alpha_bet:
-        sections.append("## VII. Layer 2 — Second-Order Thinking")
+        sections.append("## VI. 第二层 — 求导思维")
         sections.append("")
         if alpha_rt:
-            sections.append("### Red Team")
+            sections.append("### 红队试炼")
             sections.append(alpha_rt)
             sections.append("")
         if gemini:
-            sections.append("### Gemini Contrarian View")
+            sections.append("### Gemini 对立观点")
             sections.append(gemini)
             sections.append("")
         if alpha_cy:
-            sections.append("### Cycle & Pendulum")
+            sections.append("### 周期钟摆")
             sections.append(alpha_cy)
             sections.append("")
         if alpha_bet:
-            sections.append("### Asymmetric Bet")
+            sections.append("### 非对称赌注")
             sections.append(alpha_bet)
             sections.append("")
 

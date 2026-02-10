@@ -49,13 +49,14 @@ def get_lens() -> InvestmentLens:
             "## Context\n{context}\n\n"
             "## Analysis Framework\n{analysis_framework}\n\n"
             "## You MUST answer these questions:\n{key_questions}\n\n"
-            "## Output Requirements\n"
-            "- Define the catalyst with a specific date or date range\n"
-            "- Provide probability-weighted expected return across scenarios\n"
-            "- Provide a clear BUY / HOLD / PASS verdict with target IRR\n"
-            "- Recommend the optimal trade structure (equity, options, pair)\n"
-            "- Specify 2-3 observable kill conditions with timeline triggers\n"
-            "- Use 80%+ active voice, no hedge words on beliefs\n"
+            "## 输出要求\n"
+            "- 使用中文撰写分析\n"
+            "- 明确催化剂的具体日期或日期区间\n"
+            "- 给出跨情景的概率加权预期回报\n"
+            "- 给出明确的 BUY / HOLD / PASS 判定及目标 IRR\n"
+            "- 推荐最优交易结构（股票、期权、配对）\n"
+            "- 列出 2-3 个带时间触发器的触杀条件\n"
+            "- 80%+ 主动语态，不用模棱两可的措辞\n"
         ),
         tags=["event-driven", "catalyst", "M&A", "spinoff", "restructuring"],
     )

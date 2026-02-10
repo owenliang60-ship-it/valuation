@@ -48,13 +48,14 @@ def get_lens() -> InvestmentLens:
             "## Context\n{context}\n\n"
             "## Analysis Framework\n{analysis_framework}\n\n"
             "## You MUST answer these questions:\n{key_questions}\n\n"
-            "## Output Requirements\n"
-            "- Present BOTH the long case and the short case\n"
-            "- Identify the specific catalyst and timeline\n"
-            "- Provide a clear LONG / SHORT / PAIR / PASS verdict with target IRR\n"
-            "- Suggest a hedge pair if recommending a directional position\n"
-            "- Specify 2-3 observable kill conditions\n"
-            "- Use 80%+ active voice, no hedge words on beliefs\n"
+            "## 输出要求\n"
+            "- 使用中文撰写分析\n"
+            "- 同时呈现多头论点和空头论点\n"
+            "- 明确指出具体催化剂及时间线\n"
+            "- 给出明确的 LONG / SHORT / PAIR / PASS 判定及目标 IRR\n"
+            "- 若推荐方向性头寸，建议对冲配对\n"
+            "- 列出 2-3 个可观测的触杀条件\n"
+            "- 80%+ 主动语态，不用模棱两可的措辞\n"
         ),
         tags=["long-short", "relative-value", "catalyst", "hedging", "EV/EBITDA"],
     )

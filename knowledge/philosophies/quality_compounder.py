@@ -45,11 +45,12 @@ def get_lens() -> InvestmentLens:
             "## Context\n{context}\n\n"
             "## Analysis Framework\n{analysis_framework}\n\n"
             "## You MUST answer these questions:\n{key_questions}\n\n"
-            "## Output Requirements\n"
-            "- State your thesis as a falsifiable claim\n"
-            "- Provide a clear BUY / HOLD / PASS verdict with target IRR\n"
-            "- Specify 2-3 observable kill conditions\n"
-            "- Use 80%+ active voice, no hedge words on beliefs\n"
+            "## 输出要求\n"
+            "- 使用中文撰写分析\n"
+            "- 论点必须是可证伪的判断\n"
+            "- 给出明确的 BUY / HOLD / PASS 判定及目标 IRR\n"
+            "- 列出 2-3 个可观测的触杀条件\n"
+            "- 80%+ 主动语态，不用模棱两可的措辞\n"
         ),
         tags=["long-term", "quality", "moat", "ROIC", "compounder"],
     )

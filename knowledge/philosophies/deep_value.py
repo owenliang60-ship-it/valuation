@@ -49,13 +49,14 @@ def get_lens() -> InvestmentLens:
             "## Context\n{context}\n\n"
             "## Analysis Framework\n{analysis_framework}\n\n"
             "## You MUST answer these questions:\n{key_questions}\n\n"
-            "## Output Requirements\n"
-            "- Quantify the margin of safety as a percentage\n"
-            "- State your thesis as a falsifiable claim about value recognition\n"
-            "- Provide a clear BUY / HOLD / PASS verdict with target IRR\n"
-            "- Address the value trap risk explicitly\n"
-            "- Specify 2-3 observable kill conditions\n"
-            "- Use 80%+ active voice, no hedge words on beliefs\n"
+            "## 输出要求\n"
+            "- 使用中文撰写分析\n"
+            "- 以百分比量化安全边际\n"
+            "- 论点必须是关于价值回归的可证伪判断\n"
+            "- 给出明确的 BUY / HOLD / PASS 判定及目标 IRR\n"
+            "- 显式讨论价值陷阱风险\n"
+            "- 列出 2-3 个可观测的触杀条件\n"
+            "- 80%+ 主动语态，不用模棱两可的措辞\n"
         ),
         tags=["value", "contrarian", "margin-of-safety", "asset-backed", "activist"],
     )

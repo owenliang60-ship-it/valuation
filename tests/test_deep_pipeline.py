@@ -193,7 +193,8 @@ class TestBuildLensAgentPrompt:
         }
         prompt = build_lens_agent_prompt(lens_dict, tmp_path)
         assert "lens_quality_compounder.md" in prompt
-        assert "800" in prompt  # min word count
+        assert "使用中文撰写" in prompt
+        assert "500-700" in prompt
 
     def test_slug_generation(self, tmp_path):
         from terminal.deep_pipeline import build_lens_agent_prompt
@@ -244,11 +245,11 @@ class TestCompileDeepReport:
             self._populate_research_dir(research_dir)
             report = compile_deep_report("TEST", research_dir)
 
-            assert "TEST Deep Research Report" in report
-            assert "Quality Compounder" in report
-            assert "Imaginative Growth" in report
-            assert "Red Team" in report
-            assert "Asymmetric Bet" in report
+            assert "TEST 深度研究报告" in report
+            assert "质量复利" in report
+            assert "想象力成长" in report
+            assert "红队试炼" in report
+            assert "非对称赌注" in report
 
     def test_writes_full_report_file(self, tmp_path):
         with patch("terminal.deep_pipeline._COMPANIES_DIR", tmp_path):
@@ -301,16 +302,17 @@ class TestCompileDeepReport:
             self._populate_research_dir(research_dir)
             report = compile_deep_report("TEST", research_dir)
 
-            # Check section ordering
-            macro_idx = report.index("Macro Environment")
-            research_idx = report.index("Research Context")
-            lens_idx = report.index("Five-Lens Analysis")
-            debate_idx = report.index("Core Debate")
-            memo_idx = report.index("Investment Memo")
-            oprms_idx = report.index("OPRMS Rating")
-            alpha_idx = report.index("Second-Order Thinking")
+            # Check section ordering (Chinese headers, no Research Context)
+            macro_idx = report.index("宏观环境")
+            lens_idx = report.index("五维透镜分析")
+            debate_idx = report.index("核心辩论")
+            memo_idx = report.index("投资备忘录")
+            oprms_idx = report.index("OPRMS 评级与仓位")
+            alpha_idx = report.index("求导思维")
 
-            assert macro_idx < research_idx < lens_idx < debate_idx < memo_idx < oprms_idx < alpha_idx
+            assert macro_idx < lens_idx < debate_idx < memo_idx < oprms_idx < alpha_idx
+            # Research Context should NOT be in the report
+            assert "Research Context" not in report
 
 
 class TestDeepAnalyzeTicker:
