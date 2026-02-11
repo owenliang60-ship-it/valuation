@@ -89,9 +89,7 @@ def format_scan_message(summary: dict) -> str:
 
         for key, name in signal_names.items():
             if key in signals:
-                symbols = signals[key][:5]  # 最多显示5个
-                extra = f" +{len(signals[key])-5}" if len(signals[key]) > 5 else ""
-                msg += f"  {name}: {', '.join(symbols)}{extra}\n"
+                msg += f"  {name}: {', '.join(signals[key])}\n"
     else:
         msg += "今日无信号触发\n"
 

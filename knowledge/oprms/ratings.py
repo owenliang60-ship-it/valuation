@@ -117,7 +117,8 @@ def print_sensitivity_table(total_capital: float) -> None:
 
     print(f"\nOPRMS 灵敏度表 (总资产: {cap_str})")
     print("=" * 75)
-    print(f"{'DNA \\\\ Timing':<15} {'S (千载难逢)':<16} {'A (趋势确立)':<16} {'B (正常波动)':<16} {'C (垃圾时间)':<16}")
+    header_dna = "DNA \\ Timing"
+    print(f"{header_dna:<15} {'S (千载难逢)':<16} {'A (趋势确立)':<16} {'B (正常波动)':<16} {'C (垃圾时间)':<16}")
     print("-" * 75)
 
     for dna in DNARating:

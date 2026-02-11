@@ -3,9 +3,13 @@ Finance 工作区配置 (Data Desk)
 """
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent
+
+# 自动加载 .env（API keys 等敏感配置）
+load_dotenv(PROJECT_ROOT / ".env")
 
 # 数据目录
 DATA_DIR = PROJECT_ROOT / "data"

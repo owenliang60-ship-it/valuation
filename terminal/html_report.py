@@ -586,6 +586,13 @@ def md_to_html(text: str) -> str:
             i += 1
             continue
 
+        # H4+ headings — render as bold paragraph
+        m_h4 = re.match(r"^#{4,}\s+(.+)$", stripped)
+        if m_h4:
+            out.append('<p><strong>' + _inline(m_h4.group(1)) + '</strong></p>')
+            i += 1
+            continue
+
         # Skip H1 (already handled by section builders)
         m_h1 = re.match(r"^#\s+", stripped)
         if m_h1:
@@ -817,11 +824,85 @@ def _extract_conviction_modifier(text: str) -> Optional[str]:
 
 
 def _extract_debate_verdict(text: str) -> Optional[str]:
-    """Extract overall verdict from debate."""
-    m = re.search(r"##\s*总体判定\s*\n+\*\*(.+?)\*\*", text)
+    """Extract overall verdict from debate.
+
+    Handles three formats:
+    - Chinese A: ## 总体判定\\n\\n**VERDICT**
+    - Chinese B: ## 总裁决\\n\\n**VERDICT**
+    - English:   ## Overall Verdict: VERDICT
+    """
+    # Chinese: ## 总体判定 / ## 总裁决 followed by **verdict**
+    m = re.search(r"##\s*(?:总体判定|总裁决)\s*\n+\*\*(.+?)\*\*", text)
+    if m:
+        return m.group(1).strip()
+    # English: ## Overall Verdict: verdict text (in heading itself)
+    m = re.search(r"##\s*Overall Verdict[：:]\s*(.+?)(?=\n)", text)
     if m:
         return m.group(1).strip()
     return None
+
+
+# Regex matching all verdict heading variants
+_VERDICT_HEADING_RE = re.compile(
+    r"^##\s*(?:总体判定|总裁决|Overall Verdict)", re.MULTILINE
+)
+
+# Regex matching all tension heading variants (H2 or H3)
+_TENSION_HEADING_RE = re.compile(
+    r"^(#{2,3})\s*(?:张力\s*[一二三四五六七八九十\d]+|Tension\s*\d+)[：:]\s*(.+?)$",
+    re.MULTILINE,
+)
+
+
+def _extract_sides(block: str) -> tuple:
+    """Extract bull, bear, resolution from a tension block.
+
+    Handles two formats:
+    1. H3 subheading: ### 多头论证 / ### 空头论证 / ### 裁决  (GOOG style)
+    2. Inline bold: **多头（...）**: / **Bull (...)**: / **决议**: (TSLA/MSFT style)
+    """
+    bull = bear = resolution = ""
+
+    # Strategy 1: H3 subheading style
+    if re.search(r"^###\s*(?:多头|空头|裁决)", block, re.MULTILINE):
+        sections = re.split(r"\n(?=###\s)", block)
+        for section in sections:
+            section = section.strip()
+            if not section.startswith("###"):
+                continue
+            header_line = section.split("\n", 1)[0]
+            body = section.split("\n", 1)[1].strip() if "\n" in section else ""
+            if re.match(r"###\s*多头", header_line):
+                bull = body
+            elif re.match(r"###\s*空头", header_line):
+                bear = body
+            elif re.match(r"###\s*裁决", header_line):
+                resolution = body
+        return bull, bear, resolution
+
+    # Strategy 2: Inline bold labels
+    m = re.search(
+        r"\*\*(?:多头|Bull)\s*[（(].*?[)）]\*\*[：:]\s*(.+?)(?=\n\n|\Z)",
+        block, re.DOTALL,
+    )
+    if m:
+        bull = m.group(1).strip()
+
+    m = re.search(
+        r"\*\*(?:空头|Bear)\s*[（(].*?[)）]\*\*[：:]\s*(.+?)(?=\n\n|\Z)",
+        block, re.DOTALL,
+    )
+    if m:
+        bear = m.group(1).strip()
+
+    m = re.search(
+        r"\*\*(?:决议|Resolution)\*\*[：:]\s*(.+?)(?=\n\n|\n---|\Z)",
+        block, re.DOTALL,
+    )
+    if m:
+        resolution = m.group(1).strip()
+
+    return bull, bear, resolution
 
 
 def _stars_html(rating: str) -> str:
@@ -1053,7 +1134,13 @@ def build_lenses_section(research_dir: Path) -> str:
 
 
 def build_debate_section(text: str) -> str:
-    """Build Section II: Core Debate with tension blocks."""
+    """Build Section II: Core Debate with tension blocks.
+
+    Handles three debate markdown formats:
+    - GOOG style: H2 tensions (## 张力一：) + H3 sub-sections (### 多头论证)
+    - TSLA style: H3 tensions (### 张力 1:) + inline bold (**多头（...）**:)
+    - MSFT style: H2 tensions (## Tension 1:) + inline bold (**Bull (...)**:)
+    """
     if not text or not text.strip():
         return ""
 
@@ -1069,38 +1156,24 @@ def build_debate_section(text: str) -> str:
         parts.append('    <div class="verdict-text">' + _inline(verdict) + '</div>')
         parts.append('  </div>')
 
-    # Parse tensions
-    tension_pattern = re.compile(
-        r"###\s*张力\s*\d+[：:]\s*(.+?)(?=\n)"
-    )
-    tensions = list(tension_pattern.finditer(text))
+    # Parse tensions — support H2/H3, Chinese/English, Chinese/Arabic numerals
+    tensions = list(_TENSION_HEADING_RE.finditer(text))
+
+    # Find where verdict section starts (to bound last tension block)
+    verdict_match = _VERDICT_HEADING_RE.search(text)
+    verdict_start = verdict_match.start() if verdict_match else len(text)
 
     if tensions:
         for idx, match in enumerate(tensions):
-            # Get the block of text for this tension
             start = match.start()
-            end = tensions[idx + 1].start() if idx + 1 < len(tensions) else len(text)
-            # Stop at "## 总体判定" if present
-            verdict_pos = text.find("## 总体判定", start)
-            if verdict_pos > start and verdict_pos < end:
-                end = verdict_pos
+            end = tensions[idx + 1].start() if idx + 1 < len(tensions) else verdict_start
+            if end > verdict_start:
+                end = verdict_start
             block = text[start:end]
 
-            title = match.group(1).strip()
+            title = match.group(2).strip()
 
-            # Extract bull/bear/resolution
-            bull = ""
-            bear = ""
-            resolution = ""
-            m_bull = re.search(r"\*\*多头[（(].+?[)）]\*\*[：:]\s*(.+?)(?=\n\n|\n\*\*空头)", block, re.DOTALL)
-            if m_bull:
-                bull = m_bull.group(1).strip()
-            m_bear = re.search(r"\*\*空头[（(].+?[)）]\*\*[：:]\s*(.+?)(?=\n\n|\n\*\*决议)", block, re.DOTALL)
-            if m_bear:
-                bear = m_bear.group(1).strip()
-            m_res = re.search(r"\*\*决议\*\*[：:]\s*(.+?)(?=\n---|\n###|\Z)", block, re.DOTALL)
-            if m_res:
-                resolution = m_res.group(1).strip()
+            bull, bear, resolution = _extract_sides(block)
 
             parts.append('  <div class="tension-block">')
             parts.append('    <div class="tension-header">'
@@ -1109,28 +1182,43 @@ def build_debate_section(text: str) -> str:
             if bull:
                 parts.append('    <div class="tension-side bull">')
                 parts.append('      <div class="side-label">BULL</div>')
-                parts.append('      <div class="prose"><p>' + _inline(bull) + '</p></div>')
+                parts.append('      <div class="prose">' + md_to_html(bull) + '</div>')
                 parts.append('    </div>')
             if bear:
                 parts.append('    <div class="tension-side bear">')
                 parts.append('      <div class="side-label">BEAR</div>')
-                parts.append('      <div class="prose"><p>' + _inline(bear) + '</p></div>')
+                parts.append('      <div class="prose">' + md_to_html(bear) + '</div>')
                 parts.append('    </div>')
             if resolution:
                 parts.append('    <div class="tension-side resolution">')
                 parts.append('      <div class="side-label">RESOLUTION</div>')
-                parts.append('      <div class="prose"><p>' + _inline(resolution) + '</p></div>')
+                parts.append('      <div class="prose">' + md_to_html(resolution) + '</div>')
                 parts.append('    </div>')
             parts.append('  </div>')
+    else:
+        # Fallback: render debate body as prose if tension parsing fails
+        body = text
+        if verdict_match:
+            body = text[:verdict_start]
+        body = _strip_first_heading(body)
+        if body.strip():
+            parts.append('  <div class="prose">')
+            parts.append(md_to_html(body))
+            parts.append('  </div>')
 
-    # Render the rest (rating table, suggested actions) after tensions
-    verdict_section = ""
-    m_verdict_section = re.search(r"(## 总体判定.*)", text, re.DOTALL)
-    if m_verdict_section:
-        verdict_section = m_verdict_section.group(1)
-        # Remove the first verdict line (already shown in verdict box)
-        verdict_section = re.sub(r"## 总体判定\s*\n+\*\*[^*]+\*\*\n*", "", verdict_section)
-        if verdict_section.strip():
+    # Render verdict section (after verdict heading)
+    if verdict_match:
+        verdict_section = text[verdict_match.start():]
+        # Remove heading line
+        verdict_section = verdict_section.split("\n", 1)[-1] if "\n" in verdict_section else ""
+        verdict_section = verdict_section.lstrip("\n")
+        # Remove first bold verdict line if it matches what's in the verdict box
+        if verdict and verdict_section.startswith("**"):
+            first_line = verdict_section.split("\n", 1)[0]
+            if verdict in first_line:
+                verdict_section = verdict_section.split("\n", 1)[-1] if "\n" in verdict_section else ""
+        verdict_section = verdict_section.strip()
+        if verdict_section:
             parts.append('  <div class="prose">')
             parts.append(md_to_html(verdict_section))
             parts.append('  </div>')

@@ -43,8 +43,8 @@ def calculate_pmarp(
     if len(prices) < lookback + ema_period:
         return pd.Series(index=prices.index, dtype=float)
 
-    # 确保按时间正序
-    prices = prices.sort_index()
+    # 重置索引，确保 iloc 顺序与传入顺序一致（调用方已按日期正序排列）
+    prices = prices.reset_index(drop=True)
 
     # 计算 EMA
     ema = prices.ewm(span=ema_period, adjust=False).mean()

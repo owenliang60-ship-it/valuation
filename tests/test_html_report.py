@@ -321,6 +321,21 @@ class TestExtractDebateVerdict:
         assert verdict is not None
         assert "HOLD" in verdict
 
+    def test_zongcaijue(self):
+        """GOOG style: ## 总裁决"""
+        text = "## 总裁决\n\n**BUY — 中高信心（70%）**\n\nDetails."
+        verdict = _extract_debate_verdict(text)
+        assert verdict is not None
+        assert "BUY" in verdict
+
+    def test_english_overall_verdict(self):
+        """MSFT style: ## Overall Verdict: ..."""
+        text = "## Overall Verdict: HOLD — Accumulate on Weakness\n\n**Scores**: ..."
+        verdict = _extract_debate_verdict(text)
+        assert verdict is not None
+        assert "HOLD" in verdict
+        assert "Accumulate" in verdict
+
     def test_missing(self):
         assert _extract_debate_verdict("no verdict") is None
 
@@ -465,7 +480,8 @@ class TestBuildDebateSection:
     def test_empty(self):
         assert build_debate_section("") == ""
 
-    def test_with_tensions(self):
+    def test_tsla_style_h3_inline_bold(self):
+        """TSLA format: H3 tensions + inline bold bull/bear/resolution."""
         text = textwrap.dedent("""\
         # TSLA 五透镜辩论
 
@@ -498,6 +514,102 @@ class TestBuildDebateSection:
         assert "bear" in result.lower()
         assert "resolution" in result.lower()
         assert "verdict-box" in result
+        assert "HOLD" in result
+
+    def test_goog_style_h2_h3_subheadings(self):
+        """GOOG format: H2 tensions with Chinese numerals + H3 sub-sections."""
+        text = textwrap.dedent("""\
+        # 多空辩论：Alphabet Inc. (GOOG)
+
+        ---
+
+        ## 张力一：CapEx 豪赌的本质
+
+        ### 多头论证
+
+        Bull argument about CapEx being disciplined.
+
+        ### 空头论证
+
+        Bear argument about FCF collapse.
+
+        ### 裁决
+
+        **多头胜出，但有条件。** Cloud backlog provides evidence.
+
+        ---
+
+        ## 张力二：AI 对搜索的影响
+
+        ### 多头论证
+
+        AI expands TAM, not zero-sum.
+
+        ### 空头论证
+
+        Search share below 90% is structural.
+
+        ### 裁决
+
+        **短期多头胜出。** Revenue growth is undeniable.
+
+        ---
+
+        ## 总裁决
+
+        **BUY — 中高信心（70%）**
+
+        **建仓策略**：当前价位建 70% 核心仓位。
+        """)
+        result = build_debate_section(text)
+        assert "sec-debate" in result
+        assert "tension-block" in result
+        assert result.count("tension-block") == 2
+        assert "Bull argument about CapEx" in result
+        assert "Bear argument about FCF" in result
+        assert "Cloud backlog provides evidence" in result
+        assert "AI expands TAM" in result
+        assert "verdict-box" in result
+        assert "BUY" in result
+
+    def test_msft_style_english_h2(self):
+        """MSFT format: English H2 tensions + inline bold Bull/Bear/Resolution."""
+        text = textwrap.dedent("""\
+        # MSFT Five-Lens Debate
+
+        ---
+
+        ## Tension 1: Growth vs Valuation
+
+        **Bull (Imaginative Growth, 4.2/5)**: Copilot S-curve opportunity.
+
+        **Bear (Deep Value, 1.5/5)**: Fails every deep value screen.
+
+        **Resolution**: Truth lies between the poles.
+
+        ---
+
+        ## Overall Verdict: HOLD — Accumulate on Weakness
+
+        **Weighted Lens Scores**: Average 3.44 / 5.0
+
+        **Confidence**: MODERATE-HIGH.
+        """)
+        result = build_debate_section(text)
+        assert "sec-debate" in result
+        assert "tension-block" in result
+        assert "Copilot S-curve" in result
+        assert "deep value screen" in result
+        assert "Truth lies" in result
+        assert "verdict-box" in result
+        assert "HOLD" in result
+
+    def test_fallback_no_tensions(self):
+        """If no tensions are found, render as prose."""
+        text = "# Debate\n\nSome debate content without structured tensions."
+        result = build_debate_section(text)
+        assert "sec-debate" in result
+        assert "Some debate content" in result
 
 
 class TestBuildMemoSection:
