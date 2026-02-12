@@ -251,11 +251,12 @@ def deep_analyze_ticker(
 
     # 4. Build all prompts (in memory temporarily)
     lens_prompts = prepare_lens_prompts(symbol, data_pkg)
+    from terminal.deep_pipeline import _slugify
+
     lens_agent_prompts = []
     for lp in lens_prompts:
         agent_prompt = build_lens_agent_prompt(lp, research_dir)
-        slug = lp["lens_name"].lower().replace("/", "_").replace(" ", "_")
-        slug = "".join(c for c in slug if c.isalnum() or c == "_")
+        slug = _slugify(lp["lens_name"])
         lens_agent_prompts.append({
             "lens_name": lp["lens_name"],
             "agent_prompt": agent_prompt,
