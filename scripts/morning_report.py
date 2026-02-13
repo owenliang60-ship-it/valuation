@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+未来资本 晨报 — 量价动量引擎 (Engine A)
+
+替代 daily_scan.py，整合所有动量信号：
+A. PMARP 极值
+B. RS 动量评级 (Method B + C)
+C. 量能加速 (DV Acceleration)
+D. RVOL 持续放量
+E. Dollar Volume Top 50 + 新面孔
+F. 相关性聚类 (仅周六)
+
+用法:
+    python scripts/morning_report.py                  # 完整晨报
+    python scripts/morning_report.py --no-telegram    # 本地测试，不推送
+    python scripts/morning_report.py --clustering     # 强制运行聚类
+"""
+
+import sys
+import time
+import json
+import argparse
+import logging
+import requests
+from datetime import datetime
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from config.settings import (
+    DATA_DIR, SCANS_DIR,
+    DOLLAR_VOLUME_REPORT_N, DOLLAR_VOLUME_LOOKBACK,
+    RS_RATING_TOP_N, RS_RATING_BOTTOM_N,
+    DV_ACCELERATION_THRESHOLD, RVOL_SUSTAINED_THRESHOLD,
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+    CLUSTERING_DIR,
+)
+from src.data import get_price_df, get_symbols
+from src.indicators.engine import run_all_indicators, get_indicator_summary, run_momentum_scan
+from src.indicators.dv_acceleration import format_dv
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Telegram
+# ============================================================
+
+def send_telegram(message: str, max_retries: int = 3) -> bool:
+    """发送 Telegram 消息 (Markdown 格式)"""
+    token = TELEGRAM_BOT_TOKEN
+    chat_id = TELEGRAM_CHAT_ID
+
+    if not token or not chat_id:
+        logger.info("[Telegram] 未配置，跳过发送")
+        return False
+
+    url = "https://api.telegram.org/bot{}/sendMessage".format(token)
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "Markdown",
+    }
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(url, json=payload, timeout=15)
+            response.raise_for_status()
+            logger.info("[Telegram] 消息已发送")
+            return True
+        except Exception as e:
+            logger.warning("[Telegram] 第%d次发送失败: %s", attempt, e)
+            if attempt < max_retries:
+                time.sleep(attempt * 2)
+
+    return False
+
+
+# ============================================================
+# 格式化模块
+# ============================================================
+
+def format_section_a(indicator_summary: dict) -> str:
+    """A. PMARP 极值"""
+    lines = ["*A. PMARP 极值*"]
+
+    high = [x for x in indicator_summary.get("top_pmarp", []) if x["value"] >= 98]
+    low = [x for x in indicator_summary.get("low_pmarp", []) if x["value"] <= 2]
+
+    if high:
+        items = "  ".join("{} {:.1f}%".format(x["symbol"], x["value"]) for x in high)
+        lines.append("突破98%: {}".format(items))
+    if low:
+        items = "  ".join("{} {:.1f}%".format(x["symbol"], x["value"]) for x in low)
+        lines.append("跌破2%: {}".format(items))
+    if not high and not low:
+        lines.append("今日无极值信号")
+
+    return "\n".join(lines)
+
+
+def format_section_b(rs_b, rs_c) -> str:
+    """B. RS 动量评级"""
+    lines = ["*B. RS 动量评级*"]
+
+    # Method B — Top N
+    if len(rs_b) > 0:
+        lines.append("_Method B (Risk-Adj Z):_")
+        lines.append("```")
+        lines.append(" # Symbol  P%   Z3m   Z1m   Z1w")
+        top = rs_b.head(RS_RATING_TOP_N)
+        for i, (_, row) in enumerate(top.iterrows(), 1):
+            lines.append("{:>2} {:<7} {:>3.0f}  {:>5.2f} {:>5.2f} {:>5.2f}".format(
+                i, row["symbol"], row["rs_rank"],
+                row.get("z_3m", 0), row.get("z_1m", 0), row.get("z_1w", 0)))
+        lines.append("```")
+
+        # Bottom N
+        bottom = rs_b.tail(RS_RATING_BOTTOM_N)
+        bottom_str = "  ".join("{} P{:.0f}".format(row["symbol"], row["rs_rank"])
+                               for _, row in bottom.iterrows())
+        lines.append("Bottom {}: {}".format(RS_RATING_BOTTOM_N, bottom_str))
+
+    # Method C — Top N
+    if len(rs_c) > 0:
+        lines.append("")
+        lines.append("_Method C (Clenow):_")
+        lines.append("```")
+        lines.append(" # Symbol  P%   63d    21d   10d")
+        top = rs_c.head(RS_RATING_TOP_N)
+        for i, (_, row) in enumerate(top.iterrows(), 1):
+            lines.append("{:>2} {:<7} {:>3.0f}  {:>5.2f} {:>5.2f} {:>5.2f}".format(
+                i, row["symbol"], row["rs_rank"],
+                row.get("clenow_63d", 0), row.get("clenow_21d", 0), row.get("clenow_10d", 0)))
+        lines.append("```")
+
+    return "\n".join(lines)
+
+
+def format_section_c(dv_df) -> str:
+    """C. 量能加速"""
+    lines = ["*C. 量能加速 (DV>{:.1f}x)*".format(DV_ACCELERATION_THRESHOLD)]
+
+    fired = dv_df[dv_df["signal"]] if len(dv_df) > 0 else dv_df
+    if len(fired) == 0:
+        lines.append("无加速信号")
+    else:
+        for _, row in fired.head(10).iterrows():
+            lines.append("{}: 5d={}/20d={} = {:.1f}x".format(
+                row["symbol"],
+                format_dv(row["dv_5d"]),
+                format_dv(row["dv_20d"]),
+                row["ratio"]))
+
+    return "\n".join(lines)
+
+
+def format_section_d(rvol_list: list) -> str:
+    """D. RVOL 持续放量"""
+    lines = ["*D. RVOL 持续放量*"]
+
+    level_icons = {
+        "sustained_5d": "5日连续:",
+        "sustained_3d": "3日连续:",
+        "single": "单日>2s:",
+    }
+
+    if not rvol_list:
+        lines.append("无持续放量信号")
+    else:
+        for item in rvol_list[:15]:
+            icon = level_icons.get(item["level"], "")
+            vals = " ".join("{:.1f}s".format(v) for v in item["values"][:5])
+            lines.append("{} {} ({})".format(icon, item["symbol"], vals))
+
+    return "\n".join(lines)
+
+
+def format_section_e(dv_result: dict) -> str:
+    """E. Dollar Volume"""
+    lines = ["*E. Dollar Volume*"]
+
+    rankings = dv_result.get("rankings", [])
+    new_faces = dv_result.get("new_faces", [])
+
+    # 新面孔
+    if new_faces:
+        nf_items = "  ".join(
+            "#{} {} {}".format(nf["rank"], nf["symbol"], format_dv(nf["dollar_volume"]))
+            for nf in new_faces[:5])
+        lines.append("新面孔: {}".format(nf_items))
+
+    # Top 10
+    if rankings:
+        lines.append("```")
+        lines.append(" # Symbol  $Vol      Price")
+        for r in rankings[:10]:
+            lines.append("{:>2} {:<7} {:>8} ${:>7.0f}".format(
+                r["rank"], r["symbol"], format_dv(r["dollar_volume"]), r["price"]))
+        lines.append("```")
+
+    return "\n".join(lines)
+
+
+def format_section_f(cluster_result: dict) -> str:
+    """F. 聚类报告 (周报，独立消息)"""
+    lines = ["*F. 相关性聚类 (周报)*"]
+
+    clusters = cluster_result.get("clusters", {})
+    comparison = cluster_result.get("comparison")
+
+    if comparison and comparison.get("new_formation"):
+        lines.append("NEW FORMATION: Jaccard={:.2f} 集群结构显著变化".format(
+            comparison.get("jaccard", 0)))
+
+    for cid, members in clusters.items():
+        members_str = ", ".join(members[:8])
+        if len(members) > 8:
+            members_str += "..."
+        lines.append("Cluster {}: {} ({})".format(cid, members_str, len(members)))
+
+    return "\n".join(lines)
+
+
+def format_morning_report(
+    indicator_summary: dict,
+    momentum_results: dict,
+    dv_result: dict = None,
+    elapsed: float = 0,
+) -> str:
+    """格式化完整晨报"""
+    now = datetime.now()
+    weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][now.weekday()]
+
+    lines = [
+        "*未来资本 晨报*",
+        "{} ({}) 07:00".format(now.strftime("%Y-%m-%d"), weekday),
+        "",
+    ]
+
+    # A. PMARP
+    lines.append(format_section_a(indicator_summary))
+    lines.append("")
+
+    # B. RS Rating
+    rs_b = momentum_results.get("rs_rating_b")
+    rs_c = momentum_results.get("rs_rating_c")
+    if rs_b is not None and rs_c is not None:
+        lines.append(format_section_b(rs_b, rs_c))
+        lines.append("")
+
+    # C. DV Acceleration
+    dv_acc = momentum_results.get("dv_acceleration")
+    if dv_acc is not None:
+        lines.append(format_section_c(dv_acc))
+        lines.append("")
+
+    # D. RVOL Sustained
+    rvol_list = momentum_results.get("rvol_sustained", [])
+    lines.append(format_section_d(rvol_list))
+    lines.append("")
+
+    # E. Dollar Volume
+    if dv_result:
+        lines.append(format_section_e(dv_result))
+        lines.append("")
+
+    # Footer
+    n_scanned = momentum_results.get("symbols_scanned", 0)
+    lines.append("扫描: {}只 | 耗时: {:.0f}s".format(n_scanned, elapsed))
+
+    return "\n".join(lines)
+
+
+# ============================================================
+# 主流程
+# ============================================================
+
+def run_dollar_volume() -> dict:
+    """运行 Dollar Volume 采集"""
+    try:
+        scripts_dir = str(Path(__file__).parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from collect_dollar_volume import collect_daily
+
+        logger.info("开始采集 Dollar Volume...")
+        result = collect_daily()
+        logger.info("Dollar Volume 采集完成: %s", result.get("status"))
+        return result
+    except Exception as e:
+        logger.warning("Dollar Volume 采集失败: %s", e)
+        return {"rankings": [], "new_faces": []}
+
+
+def run_clustering(symbols: list) -> dict:
+    """运行相关性聚类"""
+    try:
+        from src.analysis.clustering import run_weekly_clustering
+
+        logger.info("开始相关性聚类...")
+        # 加载价格数据
+        price_dict = {}
+        for sym in symbols:
+            df = get_price_df(sym, max_age_days=0)
+            if df is not None and not df.empty:
+                if 'date' in df.columns:
+                    df = df.sort_values('date').reset_index(drop=True)
+                price_dict[sym] = df
+
+        history_path = CLUSTERING_DIR / "cluster_history.json"
+        result = run_weekly_clustering(price_dict, history_path=history_path)
+        logger.info("聚类完成: %d 个集群", result.get("n_clusters", 0))
+        return result
+    except Exception as e:
+        logger.warning("聚类失败: %s", e)
+        return {}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="未来资本 晨报")
+    parser.add_argument("--no-telegram", action="store_true", help="不推送 Telegram")
+    parser.add_argument("--clustering", action="store_true", help="强制运行聚类")
+    parser.add_argument("--symbols", type=str, help="指定股票代码，逗号分隔")
+    args = parser.parse_args()
+
+    logger.info("=" * 60)
+    logger.info("未来资本 晨报 开始")
+    logger.info("=" * 60)
+
+    start_time = time.time()
+
+    try:
+        # 1. 获取股票列表
+        if args.symbols:
+            symbols = [s.strip().upper() for s in args.symbols.split(",")]
+        else:
+            symbols = get_symbols()
+        logger.info("股票池: %d 只", len(symbols))
+
+        # 2. PMARP + RVOL (per-stock indicators)
+        indicator_results = run_all_indicators(symbols, parallel=True)
+        indicator_summary = get_indicator_summary(indicator_results)
+
+        # 3. 跨截面动量信号 (RS Rating, DV Accel, RVOL Sustained)
+        momentum_results = run_momentum_scan(symbols, max_age_days=0)
+
+        # 4. Dollar Volume 采集
+        dv_result = run_dollar_volume()
+
+        # 5. 聚类 (仅周六或强制)
+        is_saturday = datetime.now().weekday() == 5
+        cluster_result = None
+        if is_saturday or args.clustering:
+            cluster_result = run_clustering(symbols)
+
+        elapsed = time.time() - start_time
+
+        # 6. 格式化
+        daily_msg = format_morning_report(
+            indicator_summary, momentum_results, dv_result, elapsed)
+
+        # 7. 保存 JSON
+        SCANS_DIR.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_path = SCANS_DIR / "morning_{}.json".format(timestamp)
+        save_data = {
+            "timestamp": timestamp,
+            "symbols_scanned": len(symbols),
+            "elapsed": round(elapsed, 1),
+            "indicator_summary": indicator_summary,
+            "rs_rating_b_top10": momentum_results["rs_rating_b"].head(10).to_dict("records") if len(momentum_results.get("rs_rating_b", [])) > 0 else [],
+            "rs_rating_c_top10": momentum_results["rs_rating_c"].head(10).to_dict("records") if len(momentum_results.get("rs_rating_c", [])) > 0 else [],
+            "dv_acceleration_fired": momentum_results["dv_acceleration"][momentum_results["dv_acceleration"]["signal"]].to_dict("records") if len(momentum_results.get("dv_acceleration", [])) > 0 else [],
+            "rvol_sustained": momentum_results.get("rvol_sustained", []),
+        }
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, ensure_ascii=False, indent=2, default=str)
+        logger.info("结果已保存: %s", save_path)
+
+        # 8. 发送 Telegram
+        if not args.no_telegram:
+            # 日报 (拆分如果超长)
+            if len(daily_msg) > 4000:
+                # 拆分: A-D 一条, E 一条
+                split_idx = daily_msg.rfind("*E. Dollar Volume*")
+                if split_idx > 0:
+                    send_telegram(daily_msg[:split_idx].strip())
+                    send_telegram(daily_msg[split_idx:].strip())
+                else:
+                    send_telegram(daily_msg[:4000])
+            else:
+                send_telegram(daily_msg)
+
+            # 聚类周报 (独立消息)
+            if cluster_result and cluster_result.get("clusters"):
+                cluster_msg = format_section_f(cluster_result)
+                send_telegram(cluster_msg)
+        else:
+            print(daily_msg)
+            if cluster_result and cluster_result.get("clusters"):
+                print("\n" + "=" * 60)
+                print(format_section_f(cluster_result))
+
+    except Exception as e:
+        logger.error("晨报异常: %s", e)
+        import traceback
+        traceback.print_exc()
+
+        if not args.no_telegram:
+            error_msg = "*未来资本 晨报异常*\n\n错误: {}".format(str(e)[:200])
+            send_telegram(error_msg)
+
+    elapsed = time.time() - start_time
+    logger.info("晨报完成，耗时 %.1f 秒", elapsed)
+    logger.info("=" * 60)
+
+
+if __name__ == "__main__":
+    main()

@@ -242,6 +242,71 @@ def print_indicator_report(results: Dict[str, Dict]):
     print("\n" + "=" * 70)
 
 
+def run_momentum_scan(
+    symbols: List[str] = None,
+    max_age_days: int = 0,
+) -> Dict[str, Any]:
+    """
+    跨截面动量扫描 — 一次性计算所有动量信号
+
+    与 run_all_indicators() 不同，此函数执行跨截面计算（RS Rating 等）
+    需要所有股票的数据同时参与。
+
+    Args:
+        symbols: 股票列表，默认使用股票池全部
+        max_age_days: 价格数据最大容忍天数（0=不自动刷新，依赖 cron）
+
+    Returns:
+        {
+            "rs_rating_b": pd.DataFrame,      # RS Rating Method B
+            "rs_rating_c": pd.DataFrame,      # RS Rating Method C
+            "dv_acceleration": pd.DataFrame,   # DV 加速
+            "rvol_sustained": list[dict],      # RVOL 持续放量
+            "symbols_scanned": int,
+            "price_dict_size": int,
+        }
+    """
+    from src.indicators.rs_rating import compute_rs_rating_b, compute_rs_rating_c
+    from src.indicators.dv_acceleration import scan_dv_acceleration
+    from src.indicators.rvol_sustained import scan_rvol_sustained
+
+    if symbols is None:
+        symbols = get_symbols()
+
+    logger.info(f"动量扫描: 加载 {len(symbols)} 只股票价格数据...")
+
+    # 加载所有股票的价格数据
+    price_dict = {}
+    for sym in symbols:
+        df = get_price_df(sym, max_age_days=max_age_days)
+        if df is not None and not df.empty:
+            if 'date' in df.columns:
+                df = df.sort_values('date').reset_index(drop=True)
+            price_dict[sym] = df
+
+    logger.info(f"成功加载 {len(price_dict)}/{len(symbols)} 只股票")
+
+    results = {
+        "symbols_scanned": len(symbols),
+        "price_dict_size": len(price_dict),
+    }
+
+    # RS Rating (跨截面)
+    results["rs_rating_b"] = compute_rs_rating_b(price_dict)
+    results["rs_rating_c"] = compute_rs_rating_c(price_dict)
+    logger.info(f"RS Rating 完成: B={len(results['rs_rating_b'])} C={len(results['rs_rating_c'])}")
+
+    # DV 加速
+    results["dv_acceleration"] = scan_dv_acceleration(price_dict)
+    logger.info(f"DV 加速完成: {len(results['dv_acceleration'])} 只")
+
+    # RVOL 持续放量
+    results["rvol_sustained"] = scan_rvol_sustained(price_dict)
+    logger.info(f"RVOL 持续完成: {len(results['rvol_sustained'])} 只触发信号")
+
+    return results
+
+
 if __name__ == "__main__":
     # 测试少量股票
     test_symbols = ["NVDA", "AAPL", "TSLA", "GOOG", "META", "MSFT", "AMZN", "AVGO", "AMD", "MU"]

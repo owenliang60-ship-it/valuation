@@ -147,3 +147,25 @@ ATTENTION_WEIGHTS = {
     "news": 0.35,
     "trends": 0.30,
 }
+
+# ============ Momentum Engine (Engine A) ============
+
+# 聚类数据目录
+CLUSTERING_DIR = DATA_DIR / "clustering"
+
+# 晨报输出目录
+SCANS_DIR = DATA_DIR / "scans"
+
+# RS Rating 配置
+RS_RATING_TOP_N = 10      # 晨报显示 Top N
+RS_RATING_BOTTOM_N = 5    # 晨报显示 Bottom N
+
+# DV 加速阈值
+DV_ACCELERATION_THRESHOLD = 1.5  # 5d/20d ratio 阈值
+
+# RVOL 持续放量阈值
+RVOL_SUSTAINED_THRESHOLD = 2.0   # σ 阈值
+
+# Telegram 配置 (从环境变量读取)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
