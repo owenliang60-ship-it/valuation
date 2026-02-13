@@ -25,8 +25,7 @@ FMP_BASE_URL = "https://financialmodelingprep.com/stable"
 
 # 股票池配置
 MARKET_CAP_THRESHOLD = 100_000_000_000  # 1000亿美元
-EXCHANGES = ["NYSE", "NASDAQ"]
-COUNTRY = "US"
+EXCHANGES = ["NYSE", "NASDAQ"]  # 交易所过滤已足够，不再按注册国过滤
 
 # 行业过滤规则 (只保留这些行业)
 ALLOWED_SECTORS = [

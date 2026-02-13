@@ -71,7 +71,6 @@ class FMPClient:
         params = {
             "marketCapMoreThan": market_cap_threshold,
             "exchange": "NYSE,NASDAQ",
-            "country": "US",
             "isActivelyTrading": "true",
         }
         data = self._request("company-screener", params)
@@ -92,7 +91,6 @@ class FMPClient:
             "limit": limit,
             "offset": offset,
             "exchange": "NYSE,NASDAQ",
-            "country": "US",
             "isActivelyTrading": "true",
         }
         if volume_more_than:
