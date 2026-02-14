@@ -1,6 +1,9 @@
 #!/bin/bash
-# Finance 工作区同步到云端
-# 用法: ./sync_to_cloud.sh [--code|--data|--all]
+# Finance 工作区云端同步
+# 用法: ./sync_to_cloud.sh [--code|--data|--push|--pull|--sync]
+# --push: 推代码+数据到云端 (等同 --all)
+# --pull: 从云端拉最新价格和基本面到本地
+# --sync: 先 pull 再 push，完整双向同步
 # 注意: 云端路径仍为 /root/workspace/Finance (保持 cron 兼容)
 
 set -e
@@ -61,19 +64,54 @@ print(f'Pipeline: OK')
     echo "✅ 云端验证通过"
 }
 
-case "${1:-all}" in
+pull_data() {
+    echo "📥 从云端拉取最新数据..."
+    # 价格数据 (云端 cron 每日更新)
+    rsync -avz "$REMOTE/data/price/" "$LOCAL_DIR/data/price/"
+    # 基本面 (云端周六更新)
+    rsync -avz "$REMOTE/data/fundamental/" "$LOCAL_DIR/data/fundamental/"
+    # 股票池 (云端周六更新)
+    rsync -avz "$REMOTE/data/pool/" "$LOCAL_DIR/data/pool/"
+    # valuation.db (云端周六重建)
+    rsync -avz "$REMOTE/data/valuation.db" "$LOCAL_DIR/data/"
+    echo "✅ 本地数据已更新到云端最新版本"
+}
+
+push_all() {
+    sync_code
+    sync_data
+    verify_cloud
+}
+
+case "${1:-}" in
     --code)
         sync_code
         ;;
     --data)
         sync_data
         ;;
-    --all|*)
-        sync_code
-        sync_data
-        verify_cloud
+    --pull)
+        pull_data
+        ;;
+    --push|--all)
+        push_all
+        ;;
+    --sync)
+        pull_data
+        echo ""
+        push_all
+        ;;
+    *)
+        echo "用法: ./sync_to_cloud.sh [--code|--data|--push|--pull|--sync]"
+        echo ""
+        echo "  --pull   从云端拉取最新价格/基本面到本地"
+        echo "  --push   推送代码+数据到云端 (等同 --all)"
+        echo "  --sync   先 pull 再 push，完整双向同步"
+        echo "  --code   只推代码"
+        echo "  --data   只推数据"
+        exit 0
         ;;
 esac
 
 echo ""
-echo "🚀 同步完成! 云端定时任务将自动运行"
+echo "同步完成!"

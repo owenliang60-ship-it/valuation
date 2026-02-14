@@ -20,14 +20,14 @@
 
 本工作区按机构交易台模式组织，每个 Desk 负责一个功能域：
 
-| Desk | 目录 | 职能 | 当前状态 |
-|------|------|------|---------|
-| **Data Desk** | `src/`, `data/`, `scripts/`, `config/` | 数据采集、存储、更新、验证 | 已运行（FMP API + SQLite + 云端 cron） |
-| **Research Desk** | `reports/` | 投资论文、行业研究、宏观分析、财报分析 | 有调研报告，待建流程 |
-| **Risk Desk** | `risk/` | IPS、暴露监控、压力测试、告警规则 | 待建 |
-| **Trading Desk** | `trading/` | 交易日志、策略库、期权展期记录、复盘 | 待建 |
-| **Portfolio Desk** | `portfolio/` | 持仓管理、观察列表、业绩归因、定期 review | 待建 |
-| **Knowledge Base** | `knowledge/` | OPRMS 评级系统、交易纪律、与 Heptabase 白板双向同步 | 待建 |
+| Desk               | 目录                                     | 职能                                 | 当前状态                            |
+| ------------------ | -------------------------------------- | ---------------------------------- | ------------------------------- |
+| **Data Desk**      | `src/`, `data/`, `scripts/`, `config/` | 数据采集、存储、更新、验证                      | 已运行（FMP API + SQLite + 云端 cron） |
+| **Research Desk**  | `reports/`                             | 投资论文、行业研究、宏观分析、财报分析                | 有调研报告，待建流程                      |
+| **Risk Desk**      | `risk/`                                | IPS、暴露监控、压力测试、告警规则                 | 待建                              |
+| **Trading Desk**   | `trading/`                             | 交易日志、策略库、期权展期记录、复盘                 | 待建                              |
+| **Portfolio Desk** | `portfolio/`                           | 持仓管理、观察列表、业绩归因、定期 review           | 待建                              |
+| **Knowledge Base** | `knowledge/`                           | OPRMS 评级系统、交易纪律、与 Heptabase 白板双向同步 | 待建                              |
 
 ---
 
@@ -39,7 +39,7 @@
 - 调用间隔: 2 秒防限流
 
 ### 股票池
-- 美股大市值精选（市值 > $1000 亿），NYSE + NASDAQ
+- 美股大市值精选（市值 \> $1000 亿），NYSE + NASDAQ
 - 允许行业: Technology, Financial Services, Healthcare, Consumer Cyclical, Communication Services (仅 Entertainment)
 - 排除行业: Consumer Defensive, Energy, Utilities, Basic Materials, Real Estate
 - 具体配置见 `config/settings.py`
@@ -47,12 +47,12 @@
 ### 数据库
 - `data/valuation.db` — 公司信息 + 财务报表（季度/年度/TTM）
 - `data/dollar_volume.db` — Dollar Volume 排名追踪
-- `data/price/*.csv` — 77 只股票 5 年日频量价数据
+- `data/price/*.csv` —  股票池内股票 5 年日频量价数据
 - `data/fundamental/*.json` — 利润表、资产负债表、现金流、比率、公司档案
 
 ### 技术指标
 - **PMARP**: Price/EMA(20) 的 150 日百分位，上穿 98% 为强势信号
-- **RVOL**: (Vol - Mean) / StdDev，>= 4σ 为异常放量
+- **RVOL**: (Vol - Mean) / StdDev，\>= 4σ 为异常放量
 - 指标引擎支持可插拔扩展（`src/indicators/`）
 
 ### 云端部署
@@ -63,13 +63,13 @@
 
 ### 定时任务（云端 cron，北京时间）
 
-| 任务 | 频率 | 时间 | 日志 |
-|------|------|------|------|
-| 量价数据更新 | 日频 | 周二-六 06:30 | `cron_price.log` |
-| Dollar Volume 采集 | 日频 | 周二-六 06:45 | `cron_scan.log` |
-| 股票池刷新 | 周频 | 周六 08:00 | `cron_pool.log` |
-| 基本面更新 | 周频 | 周六 10:00 | `cron_fundamental.log` |
-| 数据库重建 | 周频 | 周六 12:00 | `cron_database.log` |
+| 任务               | 频率  | 时间         | 日志                     |
+| ---------------- | --- | ---------- | ---------------------- |
+| 量价数据更新           | 日频  | 周二-六 06:30 | `cron_price.log`       |
+| Dollar Volume 采集 | 日频  | 周二-六 06:45 | `cron_scan.log`        |
+| 股票池刷新            | 周频  | 周六 08:00   | `cron_pool.log`        |
+| 基本面更新            | 周频  | 周六 10:00   | `cron_fundamental.log` |
+| 数据库重建            | 周频  | 周六 12:00   | `cron_database.log`    |
 
 ### 常用命令
 
@@ -95,21 +95,21 @@ ssh aliyun "tail -30 /root/workspace/Finance/logs/cron_scan.log"
 
 ### Y 轴 — 资产基因 (DNA)
 
-| 等级 | 名称 | 仓位上限 | 特征 |
-|------|------|---------|------|
-| S | 圣杯 | 20-25% | 改变人类进程的超级核心资产 |
-| A | 猛将 | 15% | 强周期龙头，细分赛道霸主 |
-| B | 黑马 | 7% | 强叙事驱动，赔率高但不确定 |
-| C | 跟班 | 2% | 补涨逻辑，基本不做 |
+| 等级  | 名称  | 仓位上限   | 特征            |
+| --- | --- | ------ | ------------- |
+| S   | 圣杯  | 20-25% | 改变人类进程的超级核心资产 |
+| A   | 猛将  | 15%    | 强周期龙头，细分赛道霸主  |
+| B   | 黑马  | 7%     | 强叙事驱动，赔率高但不确定 |
+| C   | 跟班  | 2%     | 补涨逻辑，基本不做     |
 
 ### X 轴 — 时机系数 (Timing)
 
-| 等级 | 名称 | 系数 | 特征 |
-|------|------|------|------|
-| S | 千载难逢 | 1.0-1.5 | 历史性时刻，暴跌坑底/突破 |
-| A | 趋势确立 | 0.8-1.0 | 主升浪确认，右侧突破 |
-| B | 正常波动 | 0.4-0.6 | 回调支撑，震荡 |
-| C | 垃圾时间 | 0.1-0.3 | 左侧磨底，无催化剂 |
+| 等级  | 名称   | 系数      | 特征            |
+| --- | ---- | ------- | ------------- |
+| S   | 千载难逢 | 1.0-1.5 | 历史性时刻，暴跌坑底/突破 |
+| A   | 趋势确立 | 0.8-1.0 | 主升浪确认，右侧突破    |
+| B   | 正常波动 | 0.4-0.6 | 回调支撑，震荡       |
+| C   | 垃圾时间 | 0.1-0.3 | 左侧磨底，无催化剂     |
 
 **核心公式**: `最终仓位 = 总资产 × DNA上限 × Timing系数`
 
@@ -148,10 +148,10 @@ ssh aliyun "tail -30 /root/workspace/Finance/logs/cron_scan.log"
 ## 建设路线图
 
 - [x] **Phase 1**: 物理合并 Valuation → Finance，建立 Desk 骨架
-- [ ] **Phase 2**: 风控 + 交易纪律基建（IPS、止损规则、交易日志模板）
-- [ ] **Phase 3**: 自动化增强（Greeks 监控、P&L 归因、Telegram 告警）
-- [ ] **Phase 4**: AI 研究助手（财报分析、SEC RAG、新闻过滤）
-- [ ] **Phase 5**: 进阶系统（regime 检测、业绩归因、评级系统代码化）
+- [ ]() **Phase 2**: 风控 + 交易纪律基建（IPS、止损规则、交易日志模板）
+- [ ]() **Phase 3**: 自动化增强（Greeks 监控、P&L 归因、Telegram 告警）
+- [ ]() **Phase 4**: AI 研究助手（财报分析、SEC RAG、新闻过滤）
+- [ ]() **Phase 5**: 进阶系统（regime 检测、业绩归因、评级系统代码化）
 
 ---
 
@@ -160,7 +160,7 @@ ssh aliyun "tail -30 /root/workspace/Finance/logs/cron_scan.log"
 详见 `docs/issues/`：
 - `.bashrc` 非交互 shell 不加载环境变量 → 用 `.env` 文件
 - `.gitignore` 的 `data/` 会匹配 `src/data/` → 用 `/data/` 只匹配根目录
-- FMP Screener API 只返回 ~976 只（非 3000+），不影响 Top 200 质量
+- FMP Screener API 只返回 \~976 只（非 3000+），不影响 Top 200 质量
 
 ## 注意事项
 
@@ -168,3 +168,4 @@ ssh aliyun "tail -30 /root/workspace/Finance/logs/cron_scan.log"
 - 金融数据有时效性，注明数据获取时间
 - 期权策略要明确标注风险敞口
 - API 调用串行执行，间隔 2 秒防限流
+
