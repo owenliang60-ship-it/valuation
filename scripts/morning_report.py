@@ -136,12 +136,13 @@ def format_section_b(rs_b, rs_c) -> str:
     """B. RS 动量评级"""
     lines = ["*B. RS 动量评级*"]
 
-    # Method B — Top N
+    # Method B — Top N (sorted by rs_rank descending)
     if len(rs_b) > 0:
+        rs_b_sorted = rs_b.sort_values("rs_rank", ascending=False)
         lines.append("_Method B (Risk-Adj Z):_")
         lines.append("```")
         lines.append(" # Symbol  P%   Z3m   Z1m   Z1w")
-        top = rs_b.head(RS_RATING_TOP_N)
+        top = rs_b_sorted.head(RS_RATING_TOP_N)
         for i, (_, row) in enumerate(top.iterrows(), 1):
             lines.append("{:>2} {:<7} {:>3.0f}  {:>5.2f} {:>5.2f} {:>5.2f}".format(
                 i, row["symbol"], row["rs_rank"],
@@ -149,18 +150,19 @@ def format_section_b(rs_b, rs_c) -> str:
         lines.append("```")
 
         # Bottom N
-        bottom = rs_b.tail(RS_RATING_BOTTOM_N)
+        bottom = rs_b_sorted.tail(RS_RATING_BOTTOM_N)
         bottom_str = "  ".join("{} P{:.0f}".format(row["symbol"], row["rs_rank"])
                                for _, row in bottom.iterrows())
         lines.append("Bottom {}: {}".format(RS_RATING_BOTTOM_N, bottom_str))
 
-    # Method C — Top N
+    # Method C — Top N (sorted by rs_rank descending)
     if len(rs_c) > 0:
+        rs_c_sorted = rs_c.sort_values("rs_rank", ascending=False)
         lines.append("")
         lines.append("_Method C (Clenow):_")
         lines.append("```")
         lines.append(" # Symbol  P%   63d    21d   10d")
-        top = rs_c.head(RS_RATING_TOP_N)
+        top = rs_c_sorted.head(RS_RATING_TOP_N)
         for i, (_, row) in enumerate(top.iterrows(), 1):
             lines.append("{:>2} {:<7} {:>3.0f}  {:>5.2f} {:>5.2f} {:>5.2f}".format(
                 i, row["symbol"], row["rs_rank"],
@@ -402,8 +404,8 @@ def main():
             "symbols_scanned": len(symbols),
             "elapsed": round(elapsed, 1),
             "indicator_summary": indicator_summary,
-            "rs_rating_b_top10": momentum_results["rs_rating_b"].head(10).to_dict("records") if len(momentum_results.get("rs_rating_b", [])) > 0 else [],
-            "rs_rating_c_top10": momentum_results["rs_rating_c"].head(10).to_dict("records") if len(momentum_results.get("rs_rating_c", [])) > 0 else [],
+            "rs_rating_b_top10": momentum_results["rs_rating_b"].sort_values("rs_rank", ascending=False).head(10).to_dict("records") if len(momentum_results.get("rs_rating_b", [])) > 0 else [],
+            "rs_rating_c_top10": momentum_results["rs_rating_c"].sort_values("rs_rank", ascending=False).head(10).to_dict("records") if len(momentum_results.get("rs_rating_c", [])) > 0 else [],
             "dv_acceleration_fired": momentum_results["dv_acceleration"][momentum_results["dv_acceleration"]["signal"]].to_dict("records") if len(momentum_results.get("dv_acceleration", [])) > 0 else [],
             "rvol_sustained": momentum_results.get("rvol_sustained", []),
         }

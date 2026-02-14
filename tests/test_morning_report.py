@@ -134,6 +134,46 @@ class TestFormatSectionB:
         assert "NVDA" in result
         assert "PLTR" in result
 
+    def test_sort_order_by_rs_rank(self):
+        """Bug fix: top/bottom must be sorted by rs_rank, not DataFrame iteration order"""
+        # DataFrame in arbitrary order (simulating pool iteration order)
+        rs_b = pd.DataFrame([
+            {"symbol": "AAPL", "rs_rank": 50, "z_3m": 0.5, "z_1m": 0.3, "z_1w": 0.1},
+            {"symbol": "NVDA", "rs_rank": 99, "z_3m": 2.3, "z_1m": 1.8, "z_1w": 1.5},
+            {"symbol": "INTC", "rs_rank": 5,  "z_3m": -1.8, "z_1m": -1.5, "z_1w": -0.9},
+            {"symbol": "PLTR", "rs_rank": 97, "z_3m": 2.1, "z_1m": 1.9, "z_1w": 0.8},
+            {"symbol": "MSFT", "rs_rank": 75, "z_3m": 1.0, "z_1m": 0.7, "z_1w": 0.4},
+            {"symbol": "BA",   "rs_rank": 10, "z_3m": -1.5, "z_1m": -1.2, "z_1w": -0.7},
+        ])
+        rs_c = pd.DataFrame([
+            {"symbol": "AAPL", "rs_rank": 60, "clenow_63d": 0.3, "clenow_21d": 0.2, "clenow_10d": 0.1},
+            {"symbol": "NVDA", "rs_rank": 98, "clenow_63d": 0.9, "clenow_21d": 0.8, "clenow_10d": 0.7},
+            {"symbol": "INTC", "rs_rank": 3,  "clenow_63d": -0.5, "clenow_21d": -0.3, "clenow_10d": -0.2},
+        ])
+        result = format_section_b(rs_b, rs_c)
+        lines = result.split("\n")
+
+        # Method B: first data line should be NVDA (P99), not AAPL
+        b_data_lines = [l for l in lines if l.strip().startswith(("1 ", " 1 "))]
+        assert len(b_data_lines) >= 1
+        assert "NVDA" in b_data_lines[0], "Top 1 should be NVDA (P99), got: {}".format(b_data_lines[0])
+
+        # Bottom should include INTC (P5) and BA (P10)
+        assert "INTC" in result
+        assert "BA" in result
+        # INTC should show P5 in bottom section
+        bottom_line_idx = next(i for i, l in enumerate(lines) if "Bottom" in l)
+        bottom_line = lines[bottom_line_idx]
+        assert "INTC" in bottom_line
+        assert "P5" in bottom_line
+
+        # Method C: first data line should be NVDA (P98)
+        c_section = result[result.index("Method C"):]
+        c_lines = c_section.split("\n")
+        c_data_lines = [l for l in c_lines if l.strip().startswith(("1 ", " 1 "))]
+        assert len(c_data_lines) >= 1
+        assert "NVDA" in c_data_lines[0], "C Top 1 should be NVDA (P98)"
+
     def test_empty_dataframes(self):
         rs_b = pd.DataFrame()
         rs_c = pd.DataFrame()

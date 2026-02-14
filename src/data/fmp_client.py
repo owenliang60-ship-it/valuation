@@ -114,6 +114,32 @@ class FMPClient:
             return data.get("historical", [])
         return []
 
+    def get_historical_price_range(self, symbol: str, from_date: str, to_date: str) -> List[Dict]:
+        """获取指定日期范围的历史日线数据 (轻量级, 用于全量扫描)
+
+        Args:
+            symbol: 股票代码
+            from_date: 开始日期 (YYYY-MM-DD)
+            to_date: 结束日期 (YYYY-MM-DD)
+
+        Returns:
+            日线数据列表 (最新在前)
+        """
+        data = self._request("historical-price-eod/full", {
+            "symbol": symbol,
+            "from": from_date,
+            "to": to_date,
+        })
+
+        if not data:
+            return []
+
+        if isinstance(data, list):
+            return data
+        elif isinstance(data, dict):
+            return data.get("historical", [])
+        return []
+
     def get_quote(self, symbol: str) -> Optional[Dict]:
         """获取实时报价"""
         data = self._request("quote", {"symbol": symbol})
