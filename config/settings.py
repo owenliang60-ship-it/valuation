@@ -338,6 +338,13 @@ DV_ACCELERATION_THRESHOLD = 1.5  # 5d/20d ratio 阈值
 # RVOL 持续放量阈值
 RVOL_SUSTAINED_THRESHOLD = 2.0   # σ 阈值
 
+# ============ Theme Engine P2 ============
+
+THEME_TOP_N = 20                           # Engine B 注意力榜取 Top N
+THEME_MAX_NEW_TICKERS = 10                 # 每次池扩展最多新增几只
+THEME_RS_THRESHOLD = 80                    # RS 动量信号阈值 (百分位)
+POOL_SOURCE_ATTENTION = "attention"        # 注意力引擎来源标记
+
 # Telegram 配置 (从环境变量读取)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")

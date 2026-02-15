@@ -113,9 +113,13 @@ def _apply_filters(stocks: List[Dict]) -> List[Dict]:
     return filtered
 
 
-def _get_analysis_stocks(stocks: List[Dict]) -> List[Dict]:
-    """提取通过分析加入的股票 (source=analysis)，这些不会被池刷新删除。"""
-    return [s for s in stocks if s.get("source") == "analysis"]
+def _get_non_screener_stocks(stocks: List[Dict]) -> List[Dict]:
+    """保留非 screener 来源的股票 (source=analysis|attention)，这些不会被池刷新删除。"""
+    return [s for s in stocks if s.get("source") in ("analysis", "attention")]
+
+
+# backward compat alias
+_get_analysis_stocks = _get_non_screener_stocks
 
 
 def refresh_universe() -> Tuple[List[Dict], List[str], List[str]]:
@@ -145,17 +149,17 @@ def refresh_universe() -> Tuple[List[Dict], List[str], List[str]]:
 
     new_stocks = sorted(new_stocks, key=lambda x: x.get("marketCap", 0), reverse=True)
 
-    # 保留分析来源的股票
+    # 保留非 screener 来源的股票 (analysis + attention)
     old_stocks = load_universe()
-    analysis_stocks = _get_analysis_stocks(old_stocks)
+    non_screener_stocks = _get_non_screener_stocks(old_stocks)
     screener_symbols = {s.get("symbol") for s in new_stocks}
     preserved = []
-    for s in analysis_stocks:
+    for s in non_screener_stocks:
         if s.get("symbol") not in screener_symbols:
             preserved.append(s)
     if preserved:
         symbols = [s.get("symbol") for s in preserved]
-        logger.info(f"保留 {len(preserved)} 只分析来源股票: {symbols}")
+        logger.info(f"保留 {len(preserved)} 只非 screener 来源股票: {symbols}")
         new_stocks.extend(preserved)
 
     # 对比变化

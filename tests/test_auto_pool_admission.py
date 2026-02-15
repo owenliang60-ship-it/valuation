@@ -26,6 +26,7 @@ from src.data.pool_manager import (
     refresh_universe,
     _apply_filters,
     _get_analysis_stocks,
+    _get_non_screener_stocks,
     UNIVERSE_FILE,
     HISTORY_FILE,
 )
@@ -461,3 +462,64 @@ class TestRefreshUniversePreservesAnalysis:
 
         symbols = [s["symbol"] for s in new_stocks]
         assert symbols.count("MSFT") == 1  # No duplicate
+
+
+# ---------------------------------------------------------------------------
+# Tests: attention source preservation
+# ---------------------------------------------------------------------------
+
+class TestAttentionSourcePreservation:
+    """Tests for refresh_universe() preserving attention-source stocks."""
+
+    def test_preserves_attention_stocks(self):
+        """Stocks with source=attention survive pool refresh."""
+        pool = EXISTING_POOL + [
+            {
+                "symbol": "IONQ",
+                "companyName": "IonQ Inc",
+                "marketCap": 8_000_000_000,
+                "sector": "Technology",
+                "industry": "Computer Hardware",
+                "source": "attention",
+                "added_at": "2026-02-15 10:00:00",
+            },
+        ]
+        save_universe(pool)
+
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp, \
+             mock.patch("src.data.pool_manager.cleanup_stale_data"):
+            mock_fmp.get_large_cap_stocks.return_value = [
+                {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
+                 "sector": "Technology", "industry": "Consumer Electronics"},
+                {"symbol": "MSFT", "companyName": "Microsoft Corp", "marketCap": 3_000e9,
+                 "sector": "Technology", "industry": "Software"},
+            ]
+            new_stocks, entered, exited = refresh_universe()
+
+        symbols = [s["symbol"] for s in new_stocks]
+        assert "IONQ" in symbols  # Preserved!
+        assert "IONQ" not in exited
+
+    def test_non_screener_stocks_includes_both_sources(self):
+        """_get_non_screener_stocks returns both analysis and attention."""
+        stocks = [
+            {"symbol": "AAPL", "source": "screener"},
+            {"symbol": "VRT", "source": "analysis"},
+            {"symbol": "IONQ", "source": "attention"},
+            {"symbol": "MSFT"},  # no source
+        ]
+        result = _get_non_screener_stocks(stocks)
+        symbols = [s["symbol"] for s in result]
+        assert "VRT" in symbols
+        assert "IONQ" in symbols
+        assert "AAPL" not in symbols
+        assert "MSFT" not in symbols
+
+    def test_backward_compat_alias(self):
+        """_get_analysis_stocks is an alias for _get_non_screener_stocks."""
+        stocks = [
+            {"symbol": "VRT", "source": "analysis"},
+            {"symbol": "IONQ", "source": "attention"},
+        ]
+        result = _get_analysis_stocks(stocks)
+        assert len(result) == 2
