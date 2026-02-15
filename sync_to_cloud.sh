@@ -73,7 +73,19 @@ pull_data() {
     echo "✅ 本地数据已更新到云端最新版本"
 }
 
+health_check_local() {
+    echo "🔍 推送前健康检查..."
+    cd "$LOCAL_DIR"
+    python3 -c "from src.data.data_health import health_check; r=health_check(); print(r.summary()); exit(0 if r.level != 'FAIL' else 1)"
+    if [ $? -ne 0 ]; then
+        echo "❌ 健康检查未通过，中止推送"
+        exit 1
+    fi
+    echo "✅ 健康检查通过"
+}
+
 push_all() {
+    health_check_local
     sync_code
     sync_data
     verify_cloud

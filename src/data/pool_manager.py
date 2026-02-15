@@ -199,11 +199,16 @@ def cleanup_stale_data(active_symbols: List[str] = None) -> Dict[str, int]:
     - 删除多余的价格 CSV
     - 清理基本面 JSON 中已退出股票的条目
 
+    安全机制:
+    - 删除比例超过 30% 时自动熔断
+    - 删除前自动创建数据快照
+
     Args:
         active_symbols: 当前活跃股票列表。如果为 None，从 universe.json 读取。
 
     Returns:
         {"csv_deleted": N, "fundamental_cleaned": N} 统计结果
+        熔断时额外返回 "aborted": True
     """
     if active_symbols is None:
         active_symbols = get_symbols()
@@ -213,14 +218,56 @@ def cleanup_stale_data(active_symbols: List[str] = None) -> Dict[str, int]:
 
     stats = {"csv_deleted": 0, "fundamental_cleaned": 0}
 
+    # === 安全阈值检查 (熔断机制) ===
+    SAFETY_THRESHOLD = 0.3  # 30%
+
+    # 检查 CSV 删除比例
+    existing_csvs = list(PRICE_DIR.glob("*.csv")) if PRICE_DIR.exists() else []
+    csv_to_delete = [f for f in existing_csvs if f.stem not in valid_symbols]
+
+    if existing_csvs and len(csv_to_delete) / len(existing_csvs) > SAFETY_THRESHOLD:
+        logger.error(
+            f"安全熔断: 将删除 {len(csv_to_delete)}/{len(existing_csvs)} 个 CSV "
+            f"({len(csv_to_delete)/len(existing_csvs):.0%})，超过 {SAFETY_THRESHOLD:.0%} 阈值，中止操作"
+        )
+        return {"csv_deleted": 0, "fundamental_cleaned": 0, "aborted": True}
+
+    # 检查基本面删除比例
+    total_fundamental_keys = 0
+    stale_fundamental_keys = 0
+    if FUNDAMENTAL_DIR.exists():
+        pool_symbols_check = set(active_symbols)
+        for json_file in FUNDAMENTAL_DIR.glob("*.json"):
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    non_meta_keys = [k for k in data if k != "_meta"]
+                    total_fundamental_keys += len(non_meta_keys)
+                    stale_fundamental_keys += len([k for k in non_meta_keys if k not in pool_symbols_check])
+            except (json.JSONDecodeError, IOError):
+                continue
+
+    if total_fundamental_keys > 0 and stale_fundamental_keys / total_fundamental_keys > SAFETY_THRESHOLD:
+        logger.error(
+            f"安全熔断: 将清理 {stale_fundamental_keys}/{total_fundamental_keys} 条基本面条目 "
+            f"({stale_fundamental_keys/total_fundamental_keys:.0%})，超过 {SAFETY_THRESHOLD:.0%} 阈值，中止操作"
+        )
+        return {"csv_deleted": 0, "fundamental_cleaned": 0, "aborted": True}
+
+    # === 删除前自动快照 ===
+    if csv_to_delete or stale_fundamental_keys > 0:
+        try:
+            from src.data.data_guardian import snapshot
+            snapshot(reason="pre-cleanup")
+        except Exception as e:
+            logger.warning(f"删除前快照失败 (继续清理): {e}")
+
     # 1. 清理过期价格 CSV
-    if PRICE_DIR.exists():
-        for csv_file in PRICE_DIR.glob("*.csv"):
-            symbol = csv_file.stem
-            if symbol not in valid_symbols:
-                csv_file.unlink()
-                stats["csv_deleted"] += 1
-                logger.info(f"删除过期价格 CSV: {symbol}")
+    for csv_file in csv_to_delete:
+        csv_file.unlink()
+        stats["csv_deleted"] += 1
+        logger.info(f"删除过期价格 CSV: {csv_file.stem}")
 
     # 2. 清理基本面 JSON 中的过期条目
     if FUNDAMENTAL_DIR.exists():
@@ -235,7 +282,7 @@ def cleanup_stale_data(active_symbols: List[str] = None) -> Dict[str, int]:
             if not isinstance(data, dict):
                 continue
 
-            stale_keys = [k for k in data if k not in pool_symbols]
+            stale_keys = [k for k in data if k not in pool_symbols and k != "_meta"]
             if stale_keys:
                 for k in stale_keys:
                     del data[k]

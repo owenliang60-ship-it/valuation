@@ -6,6 +6,7 @@
     python scripts/update_data.py --price        # 只更新量价数据
     python scripts/update_data.py --fundamental  # 只更新基本面数据
     python scripts/update_data.py --price --symbols AAPL,NVDA  # 指定股票
+    python scripts/update_data.py --check        # 仅运行健康检查
 """
 import argparse
 import sys
@@ -30,8 +31,15 @@ def main():
     parser.add_argument("--symbols", type=str, help="指定股票代码，逗号分隔")
     parser.add_argument("--force", action="store_true", help="强制全量更新")
     parser.add_argument("--correlation", action="store_true", help="计算相关性矩阵")
+    parser.add_argument("--check", action="store_true", help="仅运行数据健康检查")
 
     args = parser.parse_args()
+
+    # --check 模式: 仅运行健康检查
+    if args.check:
+        from src.data.data_health import health_check
+        report = health_check(verbose=True)
+        sys.exit(0 if report.level != "FAIL" else 1)
 
     # 如果没有指定任何选项，显示帮助
     if not any([args.all, args.pool, args.price, args.fundamental, args.correlation]):
@@ -94,9 +102,20 @@ def main():
         print(f"\n✅ 相关性矩阵: {len(matrix)} 只股票")
         print()
 
+    # 更新后健康检查
+    print("=" * 40)
+    print("Final: 数据健康检查")
+    print("=" * 40)
+    from src.data.data_health import health_check
+    report = health_check(verbose=True)
+    print()
+
     print(f"{'='*60}")
     print("数据更新完成!")
     print(f"{'='*60}\n")
+
+    if report.level == "FAIL":
+        sys.exit(1)
 
 
 if __name__ == "__main__":

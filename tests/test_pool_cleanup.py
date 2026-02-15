@@ -71,17 +71,22 @@ class TestCleanupStaleData:
         assert (price_dir / "QQQ.csv").exists()
 
     def test_cleans_fundamental_json(self, setup_dirs):
-        """清理基本面 JSON 中已退出股票的条目"""
+        """清理基本面 JSON 中已退出股票的条目 (比例 <30% 才不触发熔断)"""
         tmp_path, price_dir, fundamental_dir, pool_dir = setup_dirs
 
-        data = {"AAPL": {"name": "Apple"}, "DEAD": {"name": "Dead Co"}, "GONE": {"name": "Gone Inc"}}
+        # 10 个有效 + 2 个过期 → 删除比例 ~17%，低于 30% 阈值
+        keep_symbols = [f"SYM{i}" for i in range(10)]
+        data = {s: {"name": f"Company {s}"} for s in keep_symbols}
+        data["DEAD"] = {"name": "Dead Co"}
+        data["GONE"] = {"name": "Gone Inc"}
         _create_fundamental(fundamental_dir, data)
 
         with patch("src.data.pool_manager.PRICE_DIR", price_dir), \
              patch("src.data.pool_manager.FUNDAMENTAL_DIR", fundamental_dir), \
-             patch("src.data.pool_manager.BENCHMARK_SYMBOLS", ["SPY", "QQQ"]):
+             patch("src.data.pool_manager.BENCHMARK_SYMBOLS", ["SPY", "QQQ"]), \
+             patch("src.data.data_guardian.snapshot", return_value=None):
             from src.data.pool_manager import cleanup_stale_data
-            stats = cleanup_stale_data(["AAPL"])
+            stats = cleanup_stale_data(keep_symbols)
 
         # 每个 JSON 文件清理 2 条 (DEAD + GONE)，共 5 个文件
         assert stats["fundamental_cleaned"] == 10
@@ -90,7 +95,7 @@ class TestCleanupStaleData:
         for fname in ["profiles", "ratios", "income", "balance_sheet", "cash_flow"]:
             with open(fundamental_dir / f"{fname}.json") as f:
                 cleaned = json.load(f)
-            assert "AAPL" in cleaned
+            assert keep_symbols[0] in cleaned
             assert "DEAD" not in cleaned
             assert "GONE" not in cleaned
 
@@ -143,23 +148,87 @@ class TestCleanupStaleData:
 
         assert stats["csv_deleted"] == 0
 
+    def test_safety_fuse_aborts_on_high_csv_ratio(self, setup_dirs):
+        """删除超过 30% CSV 时触发熔断"""
+        tmp_path, price_dir, fundamental_dir, pool_dir = setup_dirs
+
+        # 创建 10 个 CSV
+        for i in range(10):
+            _create_csv(price_dir, f"SYM{i}")
+
+        # 只保留 2 个 → 要删 8 个 (80%)
+        with patch("src.data.pool_manager.PRICE_DIR", price_dir), \
+             patch("src.data.pool_manager.FUNDAMENTAL_DIR", fundamental_dir), \
+             patch("src.data.pool_manager.BENCHMARK_SYMBOLS", []), \
+             patch("src.data.data_guardian.snapshot", return_value=None):
+            from src.data.pool_manager import cleanup_stale_data
+            stats = cleanup_stale_data(["SYM0", "SYM1"])
+
+        assert stats.get("aborted") is True
+        assert stats["csv_deleted"] == 0
+        # 所有文件应该还在
+        assert len(list(price_dir.glob("*.csv"))) == 10
+
+    def test_safety_fuse_allows_small_cleanup(self, setup_dirs):
+        """删除低于 30% CSV 时正常执行"""
+        tmp_path, price_dir, fundamental_dir, pool_dir = setup_dirs
+
+        # 创建 10 个 CSV
+        for i in range(10):
+            _create_csv(price_dir, f"SYM{i}")
+
+        # 保留 8 个 → 要删 2 个 (20%)
+        keep = [f"SYM{i}" for i in range(8)]
+        with patch("src.data.pool_manager.PRICE_DIR", price_dir), \
+             patch("src.data.pool_manager.FUNDAMENTAL_DIR", fundamental_dir), \
+             patch("src.data.pool_manager.BENCHMARK_SYMBOLS", []), \
+             patch("src.data.data_guardian.snapshot", return_value=None):
+            from src.data.pool_manager import cleanup_stale_data
+            stats = cleanup_stale_data(keep)
+
+        assert stats.get("aborted") is not True
+        assert stats["csv_deleted"] == 2
+        assert len(list(price_dir.glob("*.csv"))) == 8
+
+    def test_safety_fuse_fundamental_threshold(self, setup_dirs):
+        """基本面条目删除超过 30% 时触发熔断"""
+        tmp_path, price_dir, fundamental_dir, pool_dir = setup_dirs
+
+        # 创建有 10 个 symbol 条目的 JSON
+        data = {f"SYM{i}": {"name": f"Company {i}"} for i in range(10)}
+        data["_meta"] = {"updated_at": "2026-02-14"}
+        (fundamental_dir / "profiles.json").write_text(json.dumps(data))
+
+        # 只保留 2 个 → 要删 8 个 (80%)
+        with patch("src.data.pool_manager.PRICE_DIR", price_dir), \
+             patch("src.data.pool_manager.FUNDAMENTAL_DIR", fundamental_dir), \
+             patch("src.data.pool_manager.BENCHMARK_SYMBOLS", []):
+            from src.data.pool_manager import cleanup_stale_data
+            stats = cleanup_stale_data(["SYM0", "SYM1"])
+
+        assert stats.get("aborted") is True
+        assert stats["fundamental_cleaned"] == 0
+
     def test_default_reads_universe(self, setup_dirs):
         """不传 active_symbols 时从 universe.json 读取"""
         tmp_path, price_dir, fundamental_dir, pool_dir = setup_dirs
 
-        # 创建 universe.json
-        universe = [{"symbol": "AAPL"}, {"symbol": "MSFT"}]
+        # 创建 universe.json with 10 symbols
+        keep = [f"SYM{i}" for i in range(10)]
+        universe = [{"symbol": s} for s in keep]
         with open(pool_dir / "universe.json", "w") as f:
             json.dump(universe, f)
 
-        _create_csv(price_dir, "AAPL")
-        _create_csv(price_dir, "MSFT")
+        # 创建 10 个有效 + 1 个过期 CSV → 删除比例 ~9%
+        for s in keep:
+            _create_csv(price_dir, s)
         _create_csv(price_dir, "DEAD")
 
         with patch("src.data.pool_manager.PRICE_DIR", price_dir), \
              patch("src.data.pool_manager.FUNDAMENTAL_DIR", fundamental_dir), \
              patch("src.data.pool_manager.BENCHMARK_SYMBOLS", ["SPY"]), \
-             patch("src.data.pool_manager.UNIVERSE_FILE", pool_dir / "universe.json"):
+             patch("src.data.pool_manager.UNIVERSE_FILE", pool_dir / "universe.json"), \
+             patch("src.data.data_guardian.snapshot", return_value=None):
             from src.data.pool_manager import cleanup_stale_data
             stats = cleanup_stale_data()  # 不传参数
 

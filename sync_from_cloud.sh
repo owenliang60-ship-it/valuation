@@ -19,6 +19,14 @@ sync_all_data() {
     echo "📥 同步数据库..."
     rsync -avz "$REMOTE/data/valuation.db" "$LOCAL_DIR/data/"
     echo "✅ 全部数据同步完成"
+    health_check_local
+}
+
+health_check_local() {
+    echo "🔍 拉取后健康检查..."
+    cd "$LOCAL_DIR"
+    python3 -c "from src.data.data_health import health_check; r=health_check(); print(r.summary())"
+    echo ""
 }
 
 case "${1:---price}" in
