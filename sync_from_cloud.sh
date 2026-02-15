@@ -5,6 +5,7 @@ set -e
 
 LOCAL_DIR="/Users/owen/CC workspace/Finance"
 REMOTE="aliyun:/root/workspace/Finance"
+PYTHON="$LOCAL_DIR/.venv/bin/python"
 
 sync_price() {
     echo "📥 同步价格数据 (云端→本地)..."
@@ -25,7 +26,7 @@ sync_all_data() {
 health_check_local() {
     echo "🔍 拉取后健康检查..."
     cd "$LOCAL_DIR"
-    python3 -c "from src.data.data_health import health_check; r=health_check(); print(r.summary())"
+    "$PYTHON" -c "from src.data.data_health import health_check; r=health_check(); print(r.summary())"
     echo ""
 }
 

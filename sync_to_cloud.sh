@@ -10,6 +10,7 @@ set -e
 
 LOCAL_DIR="/Users/owen/CC workspace/Finance"
 REMOTE="aliyun:/root/workspace/Finance"
+PYTHON="$LOCAL_DIR/.venv/bin/python"
 
 sync_code() {
     echo "📦 同步代码..."
@@ -76,7 +77,7 @@ pull_data() {
 health_check_local() {
     echo "🔍 推送前健康检查..."
     cd "$LOCAL_DIR"
-    python3 -c "from src.data.data_health import health_check; r=health_check(); print(r.summary()); exit(0 if r.level != 'FAIL' else 1)"
+    "$PYTHON" -c "from src.data.data_health import health_check; r=health_check(); print(r.summary()); exit(0 if r.level != 'FAIL' else 1)"
     if [ $? -ne 0 ]; then
         echo "❌ 健康检查未通过，中止推送"
         exit 1

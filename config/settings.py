@@ -40,6 +40,8 @@ PERMANENTLY_EXCLUDED = {
     "CAT", "DE", "HON", "PH",
     # 用户手动排除的其他工业
     "UNP", "ADP",
+    # 用户手动排除的医疗器械/军工
+    "SYK", "NOC",
 }
 
 # 永久排除的行业 (这些行业的股票永远不加入)
