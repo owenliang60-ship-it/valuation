@@ -380,7 +380,8 @@ class TestRefreshUniversePreservesAnalysis:
         ]
         save_universe(pool)
 
-        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp, \
+             mock.patch("src.data.pool_manager.cleanup_stale_data"):
             # Screener returns only AAPL and MSFT (VRT not in screener)
             mock_fmp.get_large_cap_stocks.return_value = [
                 {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
@@ -400,7 +401,8 @@ class TestRefreshUniversePreservesAnalysis:
         """refresh_universe() applies sector filters."""
         save_universe([])
 
-        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp, \
+             mock.patch("src.data.pool_manager.cleanup_stale_data"):
             mock_fmp.get_large_cap_stocks.return_value = [
                 {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
                  "sector": "Technology", "industry": "Consumer Electronics"},
@@ -420,7 +422,8 @@ class TestRefreshUniversePreservesAnalysis:
         """refresh_universe() excludes permanently excluded tickers."""
         save_universe([])
 
-        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp, \
+             mock.patch("src.data.pool_manager.cleanup_stale_data"):
             mock_fmp.get_large_cap_stocks.return_value = [
                 {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
                  "sector": "Technology", "industry": "Consumer Electronics"},
@@ -446,7 +449,8 @@ class TestRefreshUniversePreservesAnalysis:
         ]
         save_universe(pool)
 
-        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp:
+        with mock.patch("src.data.pool_manager.fmp_client") as mock_fmp, \
+             mock.patch("src.data.pool_manager.cleanup_stale_data"):
             mock_fmp.get_large_cap_stocks.return_value = [
                 {"symbol": "AAPL", "companyName": "Apple Inc", "marketCap": 3_500e9,
                  "sector": "Technology", "industry": "Consumer Electronics"},
