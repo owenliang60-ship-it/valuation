@@ -27,20 +27,8 @@ FMP_BASE_URL = "https://financialmodelingprep.com/stable"
 MARKET_CAP_THRESHOLD = 100_000_000_000  # 1000亿美元
 EXCHANGES = ["NYSE", "NASDAQ"]  # 交易所过滤已足够，不再按注册国过滤
 
-# 行业过滤规则 (只保留这些行业)
-ALLOWED_SECTORS = [
-    "Technology",
-    "Financial Services",
-    "Healthcare",
-    "Consumer Cyclical",
-    "Communication Services",  # 仅 Entertainment
-]
-
-# 行业内细分过滤
-ALLOWED_INDUSTRIES = {
-    "Industrials": ["Aerospace & Defense"],  # 只保留航空航天/国防
-    "Communication Services": ["Entertainment"],  # 只保留娱乐
-}
+# 过滤策略：使用排除法 (EXCLUDED_SECTORS + EXCLUDED_INDUSTRIES + PERMANENTLY_EXCLUDED)
+# 不维护 ALLOWED 白名单，只维护黑名单——新行业默认进入，需要排除时手动加入
 
 # 永久排除的股票 (不论市值和行业，永远不加入股票池)
 PERMANENTLY_EXCLUDED = {

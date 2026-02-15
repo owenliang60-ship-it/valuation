@@ -45,10 +45,10 @@
 - 具体配置见 `config/settings.py`
 
 ### 数据库
-- `data/valuation.db` — 公司信息 + 财务报表（季度/年度/TTM）
-- `data/dollar_volume.db` — Dollar Volume 排名追踪
-- `data/price/*.csv` —  股票池内股票 5 年日频量价数据
+- `data/company.db` — 统一公司数据库（公司信息、OPRMS 评级、分析记录、kill conditions）
+- `data/price/*.csv` — 股票池内股票 5 年日频量价数据 + SPY/QQQ benchmark
 - `data/fundamental/*.json` — 利润表、资产负债表、现金流、比率、公司档案
+- 股票池刷新时自动清理退出股票的残留数据（`cleanup_stale_data()`）
 
 ### 技术指标
 - **PMARP**: Price/EMA(20) 的 150 日百分位，上穿 98% 为强势信号
@@ -69,7 +69,6 @@
 | Dollar Volume 采集 | 日频  | 周二-六 06:45 | `cron_scan.log`        |
 | 股票池刷新            | 周频  | 周六 08:00   | `cron_pool.log`        |
 | 基本面更新            | 周频  | 周六 10:00   | `cron_fundamental.log` |
-| 数据库重建            | 周频  | 周六 12:00   | `cron_database.log`    |
 
 ### 常用命令
 

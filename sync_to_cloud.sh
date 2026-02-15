@@ -42,8 +42,6 @@ sync_code() {
 
 sync_data() {
     echo "📊 同步数据..."
-    rsync -avz "$LOCAL_DIR/data/valuation.db" "$REMOTE/data/"
-    rsync -avz "$LOCAL_DIR/data/dollar_volume.db" "$REMOTE/data/" 2>/dev/null || true
     rsync -avz "$LOCAL_DIR/data/fundamental/" "$REMOTE/data/fundamental/"
     rsync -avz "$LOCAL_DIR/data/pool/" "$REMOTE/data/pool/"
     # 量价数据通常云端自己更新，除非需要可以取消注释
@@ -72,8 +70,6 @@ pull_data() {
     rsync -avz "$REMOTE/data/fundamental/" "$LOCAL_DIR/data/fundamental/"
     # 股票池 (云端周六更新)
     rsync -avz "$REMOTE/data/pool/" "$LOCAL_DIR/data/pool/"
-    # valuation.db (云端周六重建)
-    rsync -avz "$REMOTE/data/valuation.db" "$LOCAL_DIR/data/"
     echo "✅ 本地数据已更新到云端最新版本"
 }
 

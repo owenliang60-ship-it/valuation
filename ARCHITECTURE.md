@@ -1,8 +1,8 @@
 # Architecture — Finance Workspace
 
-**未来资本 AI Trading Desk | Updated: 2026-02-09**
+**未来资本 AI Trading Desk | Updated: 2026-02-15**
 
-**Code Stats**: ~85 Python files, 17,192 lines, 179 tests passing
+**Code Stats**: ~90+ Python files, 650+ tests passing
 
 ---
 
@@ -113,9 +113,8 @@
 ║  ════════════ STORAGE 层 ══════════════════════════════════            ║
 ║                                                                        ║
 ║  data/                                                                 ║
-║  ├─ valuation.db          SQLite (公司信息+财务报表)                      ║
-║  ├─ dollar_volume.db      SQLite (流动性排名)                            ║
-║  ├─ price/*.csv           77股 5年日频 + SPY/QQQ                        ║
+║  ├─ company.db            SQLite (统一公司DB: OPRMS+分析+kill)           ║
+║  ├─ price/*.csv           池内股 5年日频 + SPY/QQQ                       ║
 ║  ├─ fundamental/*.json    利润表/资产负债表/现金流/比率/档案                 ║
 ║  ├─ macro/                macro_snapshot.json (FRED cache)             ║
 ║  ├─ companies/{SYM}/      per-ticker 分析存档                           ║
@@ -384,7 +383,7 @@ portfolio/holdings/
 | `data_validator.py` | 322 | Schema validation + quality checks |
 | `data_query.py` | 277 | Unified `get_stock_data(symbol)` interface |
 | `dollar_volume.py` | 255 | Liquidity ranking system |
-| `pool_manager.py` | 245 | Stock pool management + auto-admission |
+| `pool_manager.py` | 300 | Stock pool management + auto-admission + stale data cleanup |
 | `price_fetcher.py` | 221 | OHLCV price data fetch + CSV storage |
 
 #### Technical Indicators (`src/indicators/`)
@@ -404,11 +403,10 @@ portfolio/holdings/
 #### Configuration (`config/`)
 
 ```python
-# config/settings.py (92 lines)
-MARKET_CAP_MIN = 100_000_000_000  # $100B
-STOCK_POOL = [...]                # 77 large-cap US stocks
+# config/settings.py
+MARKET_CAP_THRESHOLD = 100_000_000_000  # $100B
 BENCHMARK_SYMBOLS = ["SPY", "QQQ"]
-MACRO_DIR = "data/macro"
+# 过滤策略: EXCLUDED_SECTORS + EXCLUDED_INDUSTRIES + PERMANENTLY_EXCLUDED (排除法)
 ```
 
 #### Operations Scripts (`scripts/`)
@@ -420,8 +418,6 @@ MACRO_DIR = "data/macro"
 | `daily_scan.py` | Daily automated scan |
 | `collect_dollar_volume.py` | Dollar volume ranking |
 | `backfill_dollar_volume.py` | Historical backfill |
-| `init_database.py` | SQLite schema creation |
-| `clean_stock_list.py` | Pool maintenance |
 | `test_fmp_api.py` | API connectivity test |
 
 ---
@@ -430,9 +426,8 @@ MACRO_DIR = "data/macro"
 
 ```
 data/
-├── valuation.db                  SQLite — company info + financial statements
-├── dollar_volume.db              SQLite — liquidity rankings
-├── price/*.csv                   77 stocks × 5yr daily OHLCV + SPY/QQQ
+├── company.db                    SQLite — unified company DB (OPRMS, analyses, kill conditions)
+├── price/*.csv                   池内股 × 5yr daily OHLCV + SPY/QQQ benchmark
 ├── fundamental/
 │   ├── income.json               Income statements
 │   ├── balance_sheet.json        Balance sheets
@@ -459,7 +454,9 @@ data/
 - **JSON**: Single-record data (oprms.json, meta.json)
 - **JSONL**: Append-only logs (memos.jsonl, analyses.jsonl)
 - **CSV**: Tabular time series (price data)
-- **SQLite**: Queryable aggregates (valuation.db)
+- **SQLite**: Queryable aggregates (company.db)
+
+**Data Hygiene**: `cleanup_stale_data()` runs automatically after pool refresh — removes stale price CSVs and fundamental JSON entries for exited stocks.
 
 ---
 
@@ -528,9 +525,8 @@ python-dotenv       # Environment variables
 |------|------|-----|
 | 06:30 | Price data update | `cron_price.log` |
 | 06:45 | Dollar volume scan | `cron_scan.log` |
-| Sat 08:00 | Stock pool refresh | `cron_pool.log` |
+| Sat 08:00 | Stock pool refresh + stale data cleanup | `cron_pool.log` |
 | Sat 10:00 | Fundamentals update | `cron_fundamental.log` |
-| Sat 12:00 | Database rebuild | `cron_database.log` |
 
 ---
 
@@ -594,7 +590,11 @@ python-dotenv       # Environment variables
 | P0 FMP Enrichment (13 new tests) | 2026-02-09 | +137 |
 | P1 Benchmark + Correlation (14 new tests, 130 total) | 2026-02-09 | +397 |
 | Macro Briefing Layer (40 new tests, 179 total) | 2026-02-09 | +773 |
-| **Current** | 2026-02-09 | **17,192 lines, 179 tests** |
+| Alpha Layer (L2) + Data Freshness + Deep Pipeline v2 | 2026-02-10 | +4,600 |
+| HTML Reports + Agent-ization + Slim Context | 2026-02-11 | +2,800 |
+| Unified Company DB (SQLite + Dashboard + Migration) | 2026-02-13 | +2,300 |
+| Pool Cleanup (stale data auto-removal) | 2026-02-15 | cleanup |
+| **Current** | 2026-02-15 | **650+ tests** |
 
 ---
 

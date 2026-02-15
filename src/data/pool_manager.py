@@ -13,8 +13,9 @@ from typing import List, Dict, Set, Tuple
 import sys
 sys.path.insert(0, str(__file__).rsplit("/src", 1)[0])
 from config.settings import (
-    POOL_DIR, MARKET_CAP_THRESHOLD,
+    POOL_DIR, PRICE_DIR, FUNDAMENTAL_DIR, MARKET_CAP_THRESHOLD,
     EXCLUDED_SECTORS, EXCLUDED_INDUSTRIES, PERMANENTLY_EXCLUDED,
+    BENCHMARK_SYMBOLS,
 )
 from src.data.fmp_client import fmp_client
 
@@ -184,7 +185,68 @@ def refresh_universe() -> Tuple[List[Dict], List[str], List[str]]:
     # 保存新股票池
     save_universe(new_stocks)
 
+    # 清理已退出股票的残留数据
+    if exited:
+        new_symbol_list = [s.get("symbol") for s in new_stocks if s.get("symbol")]
+        cleanup_stale_data(new_symbol_list)
+
     return new_stocks, list(entered), list(exited)
+
+
+def cleanup_stale_data(active_symbols: List[str] = None) -> Dict[str, int]:
+    """
+    清理不在当前池 + benchmark 中的过期数据：
+    - 删除多余的价格 CSV
+    - 清理基本面 JSON 中已退出股票的条目
+
+    Args:
+        active_symbols: 当前活跃股票列表。如果为 None，从 universe.json 读取。
+
+    Returns:
+        {"csv_deleted": N, "fundamental_cleaned": N} 统计结果
+    """
+    if active_symbols is None:
+        active_symbols = get_symbols()
+
+    # 合法的 symbol 集合 = 股票池 + benchmark
+    valid_symbols = set(active_symbols) | set(BENCHMARK_SYMBOLS)
+
+    stats = {"csv_deleted": 0, "fundamental_cleaned": 0}
+
+    # 1. 清理过期价格 CSV
+    if PRICE_DIR.exists():
+        for csv_file in PRICE_DIR.glob("*.csv"):
+            symbol = csv_file.stem
+            if symbol not in valid_symbols:
+                csv_file.unlink()
+                stats["csv_deleted"] += 1
+                logger.info(f"删除过期价格 CSV: {symbol}")
+
+    # 2. 清理基本面 JSON 中的过期条目
+    if FUNDAMENTAL_DIR.exists():
+        pool_symbols = set(active_symbols)  # 基本面只保留池内股票，不含 benchmark
+        for json_file in FUNDAMENTAL_DIR.glob("*.json"):
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                continue
+
+            if not isinstance(data, dict):
+                continue
+
+            stale_keys = [k for k in data if k not in pool_symbols]
+            if stale_keys:
+                for k in stale_keys:
+                    del data[k]
+                with open(json_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                stats["fundamental_cleaned"] += len(stale_keys)
+                logger.info(f"清理 {json_file.name}: 移除 {len(stale_keys)} 条过期条目")
+
+    logger.info(f"数据清理完成: 删除 {stats['csv_deleted']} 个 CSV, "
+                f"清理 {stats['fundamental_cleaned']} 条基本面条目")
+    return stats
 
 
 def get_symbols() -> List[str]:
