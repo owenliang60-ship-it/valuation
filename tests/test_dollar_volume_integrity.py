@@ -21,8 +21,11 @@ def db(tmp_path):
 
 
 def seed(db, day, n=200, scanned=1000):
-    dv.store_daily_rankings(day, rankings(n), db_path=db)
-    dv.log_collection(day, dict(total_scanned=scanned, stored=n, status="ok"), db_path=db)
+    rows = rankings(n)
+    reference = dv.latest_quality_reference(day, db)
+    evidence = dv.make_quality_evidence(rows, scanned, [r["symbol"] for r in rows], reference)
+    dv.store_daily_rankings(day, rows, db_path=db,
+                           stats=dict(total_scanned=scanned, stored=n, status="ok"), evidence=evidence)
 
 
 def wire(monkeypatch, db, snapshots):
@@ -134,7 +137,9 @@ def test_new_faces_requires_whole_30_day_window(db):
         seed(db, day)
     rows = rankings()
     rows[0]["symbol"] = "NEWCOMER"
-    dv.store_daily_rankings("2026-07-31", rows, db_path=db)
+    evidence = dv.make_quality_evidence(rows, 1000, [r["symbol"] for r in rows],
+                                        dv.latest_quality_reference("2026-07-31", db))
+    dv.store_daily_rankings("2026-07-31", rows, db_path=db, evidence=evidence)
     # One bad day cannot be silently skipped in the lookback.
     seed(db, "2026-07-10", n=95)
     assert dv.detect_new_faces("2026-07-31", db_path=db) == []
@@ -198,3 +203,92 @@ def test_baseline_ignores_future_and_incomplete_samples(db):
     seed(db, "2026-09-02", n=95, scanned=10000)
     seed(db, "2026-09-10", scanned=10000)
     assert dv.collection_minimum("2026-09-04", db) == 800
+
+
+def test_leader_guard_survives_failed_previous_day(db, monkeypatch):
+    seed(db, "2026-09-01")
+    seed(db, "2026-09-02", n=95, scanned=574)
+    wire(monkeypatch, db, [stocks()[5:]])
+    result = collector.collect_daily("2026-09-03", db_path=db)
+    assert result["status"] == "unavailable"
+    assert not dv.is_collected("2026-09-03", db_path=db)
+    assert dv.latest_quality_reference("2026-09-03", db)["date"] == "2026-09-01"
+    assert dv.get_previous_day_ranks("2026-09-03", db_path=db) is None
+
+
+def test_old_cache_without_full_evidence_cannot_bypass_leader_guard(db, monkeypatch):
+    seed(db, "2026-09-01")
+    rows = collector.compute_rankings(stocks()[5:])
+    dv.store_daily_rankings("2026-09-02", rows, db_path=db,
+                           stats=dict(total_scanned=995, stored=200, status="ok"))
+    wire(monkeypatch, db, [stocks()[5:]])
+    assert collector.collect_daily("2026-09-02", db_path=db)["status"] == "unavailable"
+    assert collector.collect_daily("2026-09-02", force=True, db_path=db)["status"] == "unavailable"
+
+
+def test_leaders_outside_top200_still_have_valid_cached_evidence(db, monkeypatch):
+    seed(db, "2026-09-01")
+    sample = stocks()
+    for r in sample[:5]:
+        r["volume"] = 1
+    calls = wire(monkeypatch, db, [sample])
+    result = collector.collect_daily("2026-09-02", db_path=db)
+    assert result["status"] == "ok"
+    assert "S1" not in {r["symbol"] for r in result["rankings"]}
+    assert collector.collect_daily("2026-09-02", db_path=db)["status"] == "skipped"
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("damage", ["rows", "symbols", "reference", "malformed"])
+def test_cache_evidence_corruption_fails_closed(db, monkeypatch, damage):
+    seed(db, "2026-09-01")
+    wire(monkeypatch, db, [stocks()])
+    assert collector.collect_daily("2026-09-02", db_path=db)["status"] == "ok"
+    conn = dv.get_connection(db)
+    proof = json.loads(conn.execute("SELECT evidence_json FROM quality_evidence WHERE date='2026-09-02'").fetchone()[0])
+    if damage == "rows":
+        conn.execute("UPDATE daily_rankings SET price=price+1 WHERE date='2026-09-02' AND rank=1")
+    else:
+        if damage == "symbols": proof["valid_symbols"] = proof["valid_symbols"][20:]
+        if damage == "reference": proof["reference"] = None
+        conn.execute("UPDATE quality_evidence SET evidence_json=? WHERE date='2026-09-02'",
+                     ("{" if damage == "malformed" else json.dumps(proof),))
+    conn.commit(); conn.close()
+    assert collector.collect_daily("2026-09-02", db_path=db)["status"] == "unavailable"
+
+
+def test_atomic_save_rolls_back_rows_log_and_evidence(db, monkeypatch):
+    seed(db, "2026-09-01")
+    seed(db, "2026-09-02")
+    before_rows = dv.get_rankings("2026-09-02", 200, db)
+    before_logs = dv.get_collection_log(db_path=db)
+    def fail(*a, **kw):
+        raise RuntimeError("injected log failure")
+    monkeypatch.setattr(dv, "_write_collection_log", fail)
+    sample = stocks()
+    sample[0]["price"] = 20
+    wire(monkeypatch, db, [sample])
+    with pytest.raises(RuntimeError, match="injected"):
+        collector.collect_daily("2026-09-02", force=True, db_path=db)
+    assert dv.get_rankings("2026-09-02", 200, db) == before_rows
+    assert dv.get_collection_log(db_path=db) == before_logs
+    assert dv.snapshot_integrity_error("2026-09-02", db) == ""
+
+
+def test_legacy_rewrite_invalidates_proof_without_creating_transition_anchor(db):
+    seed(db, "2026-09-01")
+    seed(db, "2026-09-02")
+    dv.store_daily_rankings("2026-09-02", rankings(), db_path=db)
+    assert dv.snapshot_integrity_error("2026-09-02", db)
+    assert dv.latest_quality_reference("2026-09-03", db)["date"] == "2026-09-01"
+
+
+def test_legacy_snapshot_only_bootstraps_anchor_not_published_cache(db, monkeypatch):
+    dv.store_daily_rankings("2026-09-01", rankings(), db_path=db,
+                           stats=dict(total_scanned=1000, stored=200, status="ok"))
+    assert dv.snapshot_integrity_error("2026-09-01", db)
+    ref = dv.latest_quality_reference("2026-09-02", db)
+    assert ref["mode"] == "legacy_transition"
+    wire(monkeypatch, db, [stocks()])
+    assert collector.collect_daily("2026-09-02", db_path=db)["status"] == "ok"
+    assert dv.latest_quality_reference("2026-09-03", db)["mode"] == "verified"

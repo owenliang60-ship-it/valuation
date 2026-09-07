@@ -15,7 +15,8 @@ def test_get_previous_day_ranks(tmp_path):
     rows = [{"symbol": s, "rank": i, "dollar_volume": float(1000-i),
              "price": 1.0, "volume": 1000-i}
             for i, s in enumerate(["AAPL", "NVDA"] + [f"S{i}" for i in range(198)], 1)]
-    dv.store_daily_rankings("2026-06-02", rows, db_path=db)
+    proof = dv.make_quality_evidence(rows, 1000, [r["symbol"] for r in rows], None)
+    dv.store_daily_rankings("2026-06-02", rows, db_path=db, evidence=proof)
     dv.log_collection("2026-06-02", {"total_scanned": 1000, "stored": 200, "status": "ok"}, db_path=db)
     dv.store_daily_rankings("2026-06-03",
         [{"symbol": "NVDA", "rank": 1, "dollar_volume": 9e9, "price": 1.0}], db_path=db)

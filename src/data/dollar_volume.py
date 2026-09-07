@@ -7,6 +7,8 @@ Dollar Volume 核心模块
 import sqlite3
 import logging
 import math
+import json
+import hashlib
 from statistics import median
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +22,41 @@ logger = logging.getLogger(__name__)
 
 MIN_SCANNED = 800
 BASELINE_RATIO = 0.8
+
+
+def snapshot_digest(rows, scanned):
+    values = [(r["rank"], r["symbol"], float(r["price"]), float(r["volume"]),
+               float(r["dollar_volume"])) for r in rows]
+    return hashlib.sha256(json.dumps([scanned, values], separators=(",", ":"),
+                                     allow_nan=False).encode()).hexdigest()
+
+
+def leader_coverage_error(symbols, reference):
+    leaders = set(reference.get("symbols", [])) if reference else set()
+    if leaders and len(leaders & set(symbols)) < math.ceil(len(leaders)*BASELINE_RATIO):
+        return "上一完整采集日Top20中超过20%的证券缺少有效量价"
+    return ""
+
+
+def latest_quality_reference(date, db_path=DOLLAR_VOLUME_DB):
+    """Quality anchor may cross failed dates; daily rank comparisons must not.
+
+    Legacy complete snapshots are transition anchors only, not verified caches.
+    A snapshot with evidence must pass its evidence checks to become an anchor.
+    """
+    for day in get_all_dates(db_path):
+        if day < date and not snapshot_integrity_error(day, db_path, require_evidence=False):
+            rows = get_rankings(day, DOLLAR_VOLUME_TOP_N, db_path)
+            return {"date": day, "symbols": [r["symbol"] for r in rows[:20]],
+                    "mode": ("legacy_transition" if snapshot_integrity_error(day, db_path)
+                             else "verified"),
+                    "digest": snapshot_digest(rows, None)}
+    return None
+
+
+def make_quality_evidence(rows, scanned, valid_symbols, reference):
+    return {"version": 1, "digest": snapshot_digest(rows, scanned),
+            "valid_symbols": sorted(set(valid_symbols)), "reference": reference}
 
 
 def rankings_integrity_error(rows: List[Dict]) -> str:
@@ -68,7 +105,8 @@ def collection_minimum(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> int:
         conn.close()
 
 
-def snapshot_integrity_error(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> str:
+def snapshot_integrity_error(date: str, db_path: Path = DOLLAR_VOLUME_DB,
+                             require_evidence: bool = True) -> str:
     conn = get_connection(db_path)
     try:
         rows = [dict(r) for r in conn.execute(
@@ -82,6 +120,39 @@ def snapshot_integrity_error(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> str
         minimum = collection_minimum(date, db_path)
         if not isinstance(log["total_scanned"], (int, float)) or log["total_scanned"] < minimum:
             return f"候选数量未达完整性门槛 {minimum}"
+        has_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                                 "AND name='quality_evidence'").fetchone()
+        evidence = conn.execute("SELECT evidence_json FROM quality_evidence WHERE date=?",
+                                (date,)).fetchone() if has_table else None
+        if not evidence:
+            return "缺少完整验收证据（旧快照）" if require_evidence else ""
+        try:
+            proof = json.loads(evidence[0])
+            if proof["version"] != 1 or proof["digest"] != snapshot_digest(rows, log["total_scanned"]):
+                return "验收证据版本或快照指纹不匹配"
+            symbols = proof["valid_symbols"]
+            if (not isinstance(symbols, list) or not all(isinstance(s, str) and s for s in symbols)
+                    or len(set(symbols)) != len(symbols)
+                    or len(symbols) > log["total_scanned"]
+                    or not {r["symbol"] for r in rows}.issubset(symbols)):
+                return "验收候选证据不完整"
+            reference = proof["reference"]
+            if reference is not None:
+                if not isinstance(reference["date"], str) or reference["date"] >= date:
+                    return "验收参照日期无效"
+                anchor_rows = [dict(r) for r in conn.execute(
+                    "SELECT * FROM daily_rankings WHERE date=? ORDER BY rank", (reference["date"],))]
+                if (rankings_integrity_error(anchor_rows)
+                        or reference["digest"] != snapshot_digest(anchor_rows, None)
+                        or reference["symbols"] != [r["symbol"] for r in anchor_rows[:20]]):
+                    return "验收参照已变化或损坏"
+            elif conn.execute("SELECT 1 FROM daily_rankings WHERE date < ? LIMIT 1", (date,)).fetchone():
+                return "已有历史但验收缺少可信参照"
+            error = leader_coverage_error(symbols, reference)
+            if error:
+                return error
+        except (KeyError, TypeError, ValueError):
+            return "验收证据无法解析"
         return ""
     finally:
         conn.close()
@@ -148,6 +219,10 @@ def init_db(db_path: Path = DOLLAR_VOLUME_DB):
                 elapsed REAL,
                 status TEXT
             );
+            CREATE TABLE IF NOT EXISTS quality_evidence (
+                date TEXT PRIMARY KEY,
+                evidence_json TEXT NOT NULL
+            );
         """)
         conn.commit()
         logger.info(f"Dollar Volume DB initialized: {db_path}")
@@ -160,12 +235,18 @@ def init_db(db_path: Path = DOLLAR_VOLUME_DB):
 # ============================================================
 
 def store_daily_rankings(date: str, rankings: List[Dict],
-                         db_path: Path = DOLLAR_VOLUME_DB):
+                         db_path: Path = DOLLAR_VOLUME_DB, *, stats=None, evidence=None):
     """存储某天的 Top N 排名"""
     conn = get_connection(db_path)
     try:
         # 先清除该日旧数据（支持重跑）
         conn.execute("DELETE FROM daily_rankings WHERE date = ?", (date,))
+        if evidence is None:
+            # A legacy writer must not turn a previously verified row into an
+            # apparently pre-migration transition anchor by deleting its proof.
+            conn.execute("UPDATE quality_evidence SET evidence_json='{}' WHERE date=?", (date,))
+        else:
+            conn.execute("DELETE FROM quality_evidence WHERE date = ?", (date,))
 
         for item in rankings:
             conn.execute("""
@@ -185,6 +266,11 @@ def store_daily_rankings(date: str, rankings: List[Dict],
                 item.get("sector", ""),
             ))
 
+        if stats is not None:
+            _write_collection_log(conn, date, stats)
+        if evidence is not None:
+            conn.execute("INSERT INTO quality_evidence VALUES (?,?)",
+                         (date, json.dumps(evidence, allow_nan=False)))
         conn.commit()
         logger.info(f"Stored {len(rankings)} rankings for {date}")
     finally:
@@ -292,23 +378,21 @@ def detect_new_faces(date: str, lookback: int = DOLLAR_VOLUME_LOOKBACK,
 # 采集日志
 # ============================================================
 
+def _write_collection_log(conn, date, stats):
+    conn.execute("""
+        INSERT OR REPLACE INTO collection_log
+            (date, total_scanned, stored, api_calls, elapsed, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (date, stats.get("total_scanned", 0), stats.get("stored", 0),
+          stats.get("api_calls", 0), stats.get("elapsed", 0), stats.get("status", "ok")))
+
+
 def log_collection(date: str, stats: Dict,
                    db_path: Path = DOLLAR_VOLUME_DB):
     """记录采集日志"""
     conn = get_connection(db_path)
     try:
-        conn.execute("""
-            INSERT OR REPLACE INTO collection_log
-                (date, total_scanned, stored, api_calls, elapsed, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            date,
-            stats.get("total_scanned", 0),
-            stats.get("stored", 0),
-            stats.get("api_calls", 0),
-            stats.get("elapsed", 0),
-            stats.get("status", "ok"),
-        ))
+        _write_collection_log(conn, date, stats)
         conn.commit()
     finally:
         conn.close()

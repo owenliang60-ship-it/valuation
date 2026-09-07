@@ -27,6 +27,7 @@ from src.data.dollar_volume import (
     detect_new_faces, log_collection, get_collection_log, is_collected,
     collection_minimum, rankings_integrity_error, snapshot_integrity_error,
     get_history_warning, get_previous_day_ranks,
+    latest_quality_reference, make_quality_evidence, leader_coverage_error, get_all_dates,
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -215,8 +216,9 @@ def collect_daily(date: str = None, force: bool = False,
     client = FMPClient()
     logger.info(f"Fetching all US stocks for {date}...")
     minimum = collection_minimum(date, db_path)
-    previous_ranks = get_previous_day_ranks(date, db_path=db_path)
-    prior_leaders = {s for s, rank in (previous_ranks or {}).items() if rank <= 20}
+    reference = latest_quality_reference(date, db_path=db_path)
+    if reference is None and any(d < date for d in get_all_dates(db_path)):
+        return unavailable("历史快照均不可作为可信参照，需核验后恢复")
     api_calls = 0
     for attempt in range(2):
         try:
@@ -228,8 +230,7 @@ def collect_daily(date: str = None, force: bool = False,
             if len(stocks) < minimum:
                 error = f"候选数量 {len(stocks)} 低于完整性门槛 {minimum}"
             valid_symbols = {r["symbol"] for r in valid}
-            if prior_leaders and len(prior_leaders & valid_symbols) < math.ceil(len(prior_leaders)*0.8):
-                error = "上一完整采集日Top20中超过20%的证券缺少有效量价"
+            error = error or leader_coverage_error(valid_symbols, reference)
         except Exception:
             # No provider URL, body or credentials in the public failure reason.
             error = "采集请求或响应解析失败"
@@ -241,19 +242,18 @@ def collect_daily(date: str = None, force: bool = False,
         time.sleep(2)
     logger.info("DV integrity passed: scanned=%d minimum=%d stored=%d", len(stocks), minimum, len(rankings))
 
-    # 存储
-    store_daily_rankings(date, rankings, db_path=db_path)
-
     elapsed = time.time() - start
 
-    # 记录日志
-    log_collection(date, {
+    # Rankings, collection metadata and acceptance evidence commit together.
+    stats = {
         "total_scanned": len(stocks),
         "stored": len(rankings),
         "api_calls": api_calls,
         "elapsed": round(elapsed, 1),
         "status": "ok",
-    }, db_path=db_path)
+    }
+    evidence = make_quality_evidence(rankings, len(stocks), valid_symbols, reference)
+    store_daily_rankings(date, rankings, db_path=db_path, stats=stats, evidence=evidence)
 
     # 检测新面孔
     new_faces = detect_new_faces(date, DOLLAR_VOLUME_LOOKBACK, DOLLAR_VOLUME_REPORT_N, db_path=db_path)
