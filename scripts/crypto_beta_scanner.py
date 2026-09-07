@@ -139,20 +139,21 @@ def scan(market, as_of, top_n=50):
 
 
 def messages(report):
+    rows = [row for row in report['rows']
+            if row['status'] == 'ok' and row['beta'] is not None and row['beta'] > 1]
     header = (f"BTC Beta 30D | 截至 {report['as_of']} UTC\n"
-              f"昨日USDT成交额前{report['selected_count']} | 按beta降序\n"
-              f"有效 {report['valid_count']}/{report['selected_count']} | 30个日收益率\n"
+              f"昨日USDT成交额前{report['selected_count']} | 仅β > 1 | 按beta降序\n"
+              f"有效 {report['valid_count']}/{report['selected_count']} | 符合 {len(rows)} 个 | 30个日收益率\n"
               "币种 | β30D | BTC相关性 | 昨日成交额\n")
+    if not rows:
+        return [header + '今日无 beta > 1 的币种。']
     chunks, lines = [], []
-    for row in report['rows']:
+    for row in rows:
         symbol = row['symbol'].removesuffix('USDT')
         symbol = re.sub(r'([_*`\[])', r'\\\1', symbol)
         amount = f"{row['quote_volume'] / 1e6:,.1f}M"
-        if row['status'] == 'ok':
-            corr = f"{row['correlation']:.2f}" if row['correlation'] is not None else 'N/A'
-            line = f"{symbol} | {row['beta']:.2f} | {corr} | {amount} USDT"
-        else:
-            line = f"{symbol} | N/A（数据不足或无效） | {amount} USDT"
+        corr = f"{row['correlation']:.2f}" if row['correlation'] is not None else 'N/A'
+        line = f"{symbol} | {row['beta']:.2f} | {corr} | {amount} USDT"
         lines.append(line)
     # Fixed small pages keep each payload below Telegram's 4096-char limit.
     for start in range(0, len(lines), 20):

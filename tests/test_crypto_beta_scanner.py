@@ -120,7 +120,7 @@ def test_future_listing_excluded_from_prior_day():
 
 def test_message_pages_under_limit_and_json_no_nan():
     report = scan(FakeMarket(), AS_OF, 2)
-    report['rows'] *= 25
+    report['rows'] = [report['rows'][0]] * 50
     chunks = messages(report)
     assert len(chunks) == 3
     assert all(len(c) < 4096 for c in chunks)
@@ -160,3 +160,27 @@ def test_daily_entry_failure_is_visible(monkeypatch):
         raise RuntimeError('beta unavailable')
     monkeypatch.setitem(sys.modules, 'fake_beta_failure', SimpleNamespace(main=fail))
     assert daily.run_scanner(4, 4, 'Beta', 'fake_beta_failure') is False
+
+
+def test_messages_only_strictly_above_one():
+    report = scan(FakeMarket(), AS_OF, 2)
+    template = report['rows'][0]
+    report['rows'] = [dict(template, symbol=symbol, beta=beta, status=status)
+                      for symbol, beta, status in [
+                          ('HIGHUSDT', 1.01, 'ok'), ('EDGEUSDT', 1.0, 'ok'),
+                          ('LOWUSDT', 0.99, 'ok'), ('NEGUSDT', -2, 'ok'),
+                          ('MISSINGUSDT', None, 'unavailable')]]
+    text = '\n'.join(messages(report))
+    assert 'HIGH |' in text
+    for name in ('EDGE', 'LOW', 'NEG', 'MISSING'):
+        assert name + ' |' not in text
+    assert '符合 1 个' in text
+    assert len(report['rows']) == 5  # Preserve the underlying audit data.
+
+
+def test_messages_no_matches_is_explicit():
+    report = scan(FakeMarket(), AS_OF, 2)
+    report['rows'] = [r for r in report['rows'] if r['symbol'] == 'BTCUSDT']
+    text = '\n'.join(messages(report))
+    assert '今日无 beta > 1 的币种' in text
+    assert 'BTC |' not in text
