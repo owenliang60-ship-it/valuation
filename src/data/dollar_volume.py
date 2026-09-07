@@ -6,6 +6,8 @@ Dollar Volume 核心模块
 """
 import sqlite3
 import logging
+import math
+from statistics import median
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -15,6 +17,88 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from config.settings import DOLLAR_VOLUME_DB, DOLLAR_VOLUME_TOP_N, DOLLAR_VOLUME_LOOKBACK
 
 logger = logging.getLogger(__name__)
+
+MIN_SCANNED = 800
+BASELINE_RATIO = 0.8
+
+
+def rankings_integrity_error(rows: List[Dict]) -> str:
+    """Validate a full stored snapshot, never just the displayed Top50."""
+    if len(rows) != DOLLAR_VOLUME_TOP_N:
+        return f"排名不足或超量：{len(rows)}/{DOLLAR_VOLUME_TOP_N}"
+    seen = set()
+    previous = math.inf
+    for rank, row in enumerate(rows, 1):
+        symbol = row.get("symbol")
+        if not isinstance(symbol, str) or not symbol.strip() or symbol.upper() in seen:
+            return "证券代码缺失或重复"
+        seen.add(symbol.upper())
+        if row.get("rank") != rank:
+            return "排名不连续"
+        for field in ("price", "volume", "dollar_volume"):
+            value = row.get(field)
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or value <= 0):
+                return "价格、成交量或成交额无效"
+        if row["dollar_volume"] > previous:
+            return "成交额排序错误"
+        previous = row["dollar_volume"]
+    return ""
+
+
+def collection_minimum(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> int:
+    """Use prior complete successful samples only; no future or failed anchors."""
+    conn = get_connection(db_path)
+    try:
+        logs = conn.execute(
+            "SELECT date,total_scanned FROM collection_log WHERE date < ? "
+            "AND status='ok' AND stored=? AND total_scanned>=? ORDER BY date DESC",
+            (date, DOLLAR_VOLUME_TOP_N, MIN_SCANNED),
+        ).fetchall()
+        counts = []
+        for log in logs:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM daily_rankings WHERE date=? ORDER BY rank", (log["date"],))]
+            if not rankings_integrity_error(rows):
+                counts.append(log["total_scanned"])
+                if len(counts) == 20:
+                    break
+        return max(MIN_SCANNED, math.ceil(median(counts)*BASELINE_RATIO)) if counts else MIN_SCANNED
+    finally:
+        conn.close()
+
+
+def snapshot_integrity_error(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> str:
+    conn = get_connection(db_path)
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM daily_rankings WHERE date=? ORDER BY rank", (date,))]
+        error = rankings_integrity_error(rows)
+        if error:
+            return error
+        log = conn.execute("SELECT * FROM collection_log WHERE date=?", (date,)).fetchone()
+        if not log or log["status"] != "ok" or log["stored"] != DOLLAR_VOLUME_TOP_N:
+            return "缺少完整采集记录"
+        minimum = collection_minimum(date, db_path)
+        if not isinstance(log["total_scanned"], (int, float)) or log["total_scanned"] < minimum:
+            return f"候选数量未达完整性门槛 {minimum}"
+        return ""
+    finally:
+        conn.close()
+
+
+def get_history_warning(date: str, lookback: int = DOLLAR_VOLUME_LOOKBACK,
+                        db_path: Path = DOLLAR_VOLUME_DB) -> str:
+    conn = get_connection(db_path)
+    try:
+        dates = [r[0] for r in conn.execute(
+            "SELECT date FROM (SELECT date FROM daily_rankings UNION SELECT date FROM collection_log) "
+            "WHERE date < ? ORDER BY date DESC LIMIT ?", (date, lookback))]
+    finally:
+        conn.close()
+    if len(dates) < lookback or any(snapshot_integrity_error(d, db_path) for d in dates):
+        return f"历史窗口不足{lookback}个完整采集日或含异常数据，暂停新面孔判断"
+    return ""
 
 # ============================================================
 # 数据库初始化
@@ -157,6 +241,8 @@ def detect_new_faces(date: str, lookback: int = DOLLAR_VOLUME_LOOKBACK,
     检测今天 Top N 中过去 lookback 个交易日未出现过的"新面孔"
     返回新面孔的完整排名信息
     """
+    if snapshot_integrity_error(date, db_path) or get_history_warning(date, lookback, db_path):
+        return []
     conn = get_connection(db_path)
     try:
         # 获取最近 lookback 个有数据的交易日（不含今天）
@@ -267,15 +353,16 @@ def rank_change_label(today_rank: int, prev_rank: "int | None") -> str:
     return "="
 
 
-def get_previous_day_ranks(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> "Dict[str, int]":
-    """< date 的最近一个交易日的 {symbol: rank}。无历史 → {}。"""
+def get_previous_day_ranks(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> "Dict[str, int] | None":
+    """最近一次采集的排名；失败或缺失返回None，不能跳过失败日。"""
     conn = get_connection(db_path)
     try:
         row = conn.execute(
-            "SELECT MAX(date) AS d FROM daily_rankings WHERE date < ?", (date,)
+            "SELECT MAX(date) AS d FROM (SELECT date FROM daily_rankings "
+            "UNION SELECT date FROM collection_log) WHERE date < ?", (date,)
         ).fetchone()
-        if not row or not row["d"]:
-            return {}
+        if not row or not row["d"] or snapshot_integrity_error(row["d"], db_path):
+            return None
         rows = conn.execute(
             "SELECT symbol, rank FROM daily_rankings WHERE date = ?", (row["d"],)
         ).fetchall()
@@ -284,9 +371,9 @@ def get_previous_day_ranks(date: str, db_path: Path = DOLLAR_VOLUME_DB) -> "Dict
         conn.close()
 
 
-def annotate_rank_changes(rankings: "List[Dict]", prev_ranks: "Dict[str, int]") -> None:
+def annotate_rank_changes(rankings: "List[Dict]", prev_ranks: "Dict[str, int] | None") -> None:
     """原地注入 rank_change_label。"""
     for item in rankings:
-        item["rank_change_label"] = rank_change_label(
+        item["rank_change_label"] = "—" if prev_ranks is None else rank_change_label(
             item["rank"], prev_ranks.get(item.get("symbol", ""))
         )
