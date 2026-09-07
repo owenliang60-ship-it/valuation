@@ -1986,6 +1986,8 @@ def format_section_c(rvol_list: list) -> str:
 
 def _normalize_dv_items(dv_result: dict, premium_symbols: set[str] | None = None) -> dict:
     """Enrich the full-market ranking without filtering or reranking rows."""
+    if dv_result.get("status") == "unavailable":
+        return {"rankings": [], "new_faces": []}
     rankings = dv_result.get("rankings", [])
     new_faces = dv_result.get("new_faces", [])
     metadata = {}
@@ -2029,6 +2031,10 @@ def _normalize_dv_items(dv_result: dict, premium_symbols: set[str] | None = None
 def format_section_d(dv_result: dict, premium_symbols: set[str] | None = None) -> str:
     """D. Dollar Volume — flat ranking with L2 concept tag, original rank order."""
     lines = ["*D. Dollar Volume*"]
+    if dv_result.get("status") == "unavailable":
+        return "\n".join(lines + [dv_result.get("warning") or "数据不可用"])
+    if dv_result.get("history_warning"):
+        lines.append(dv_result["history_warning"])
     normalized = _normalize_dv_items(dv_result, premium_symbols)
 
     if normalized["new_faces"]:
@@ -2173,6 +2179,12 @@ def build_html_payload(market_signals: dict, dv_result: dict, as_of: str) -> dic
     blocks.append({"heading": "2. 量能异常", "columns": va_cols, "rows": va_rows})
 
     # Dollar Volume — flat ranking; columns one-to-one with format_section_d
+    if dv_result and dv_result.get("status") == "unavailable":
+        blocks.append({"heading": "3. Dollar Volume — 数据状态",
+                       "alerts": [dv_result.get("warning") or "数据不可用"]})
+    elif dv_result and dv_result.get("history_warning"):
+        blocks.append({"heading": "3. Dollar Volume — 数据状态",
+                       "subtitle": dv_result.get("warning") or dv_result["history_warning"]})
     if dv_result:
         normalized = _normalize_dv_items(
             dv_result, _premium_symbols_from_market_signals(market_signals),
@@ -2448,11 +2460,15 @@ def build_morning_visual_sections(
                     for item in normalized["rankings"]
                 ],
             })
-        if blocks:
+        if blocks or dv_result.get("status") == "unavailable" or dv_result.get("history_warning"):
             sections.append({
                 "slug": "03_dollar_volume",
                 "title": "3. Dollar Volume",
-                "subtitle": "信号日 {} | 按成交额排名，附概念(L2)".format(as_of),
+                "subtitle": ("信号日 {}".format(as_of) if dv_result.get("status") == "unavailable"
+                             else dv_result.get("history_warning") or
+                             "信号日 {} | 按成交额排名，附概念(L2)".format(as_of)),
+                "alerts": ([{"text": dv_result.get("warning") or "数据不可用"}]
+                           if dv_result.get("status") == "unavailable" else []),
                 "blocks": blocks,
             })
 
@@ -3095,8 +3111,9 @@ def run_dollar_volume(as_of: str | None = None) -> dict:
         logger.info("Dollar Volume 采集完成: %s", result.get("status"))
         return result
     except Exception as e:
-        logger.warning("Dollar Volume 采集失败: %s", e)
-        return {"rankings": [], "new_faces": []}
+        logger.error("Dollar Volume 采集失败 (%s)", type(e).__name__)
+        return {"date": as_of, "status": "unavailable", "rankings": [], "new_faces": [],
+                "warning": "数据不可用：采集或完整性验证失败"}
 
 
 def _deliver_morning_report(market_signals, dv_result, daily_msg, image_delivery,
