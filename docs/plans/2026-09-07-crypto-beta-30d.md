@@ -48,11 +48,11 @@ flowchart LR
 - [x] scripts/quant/daily_scan_all.py：保存现有入口并追加一项。
 - [x] tests/test_crypto_beta_scanner.py：合成beta=2/-1/1、缺日/陈旧/重复/坏值、新币、排名、失败语义、无发送预览。
 - [x] 定向pytest和Python3.10编译；云端真实dry-run；独立numpy回归对拍。
-- [ ] 主线程review已完成；待部署入口及模块，验证原有cron、模块导入及哈希。
+- [x] 主线程review已完成；已部署入口及模块，验证原有cron、模块导入及哈希。
 
 ## 验收
 - [x] 前50排名来自同一完整UTC日的USDT成交额。
 - [x] 所有有效beta恰好30个收益率；BTC=1；相关性范围[-1,1]。
 - [x] 缺口明确，不用0或1冒充结果；基准无效则整榜失败。
 - [x] 50行榜单分块不超过Telegram限制，dry-run不发消息。
-- [ ] 每日入口新增一项、原三项及定时不变。
+- [x] 每日入口新增一项、原三项及定时不变。

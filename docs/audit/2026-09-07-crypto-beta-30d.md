@@ -13,3 +13,13 @@
 Finance git版本部署后，在Quant现有cron锁下，验证旧入口哈希，备份入口，再复制薄适配器及新入口；原08:06 cron不变。回滚从备份恢复daily入口即可。
 
 正式定时运行尚未自然触发；本次不额外手动发送榜单。
+
+## 已部署 2026-09-07 10:56 北京时间
+
+代码221f0b5已合并push并云端pull；云端30 tests passed，Python3.10编译通过。Quant入口在现有cron锁下完成备份和替换；薄适配器真实路径调用使用mock验证，未发送Telegram。
+
+- 备份：`/root/workspace/Quant/backups/crypto-beta-30d-20260907T025621Z/daily_scan_all.py`。
+- 新入口SHA256：`76370cb2d8f3cfcb0bad4f11e8babe54a167942973437a2adb9ac716300d1b55`，与Finance版本一致。
+- crontab仍为`6 8 * * * /root/workspace/Quant/scanners/run_daily_scan.sh`。
+- 正式成果位置：`/root/workspace/Quant/results/beta_30d/btc_beta_30d_YYYY-MM-DD.json`。
+- 本次真实预览：`/tmp/crypto-beta-30d-check/results/btc_beta_30d_2026-09-06.json`；独立验证脚本同目录`independent_check.py`。
