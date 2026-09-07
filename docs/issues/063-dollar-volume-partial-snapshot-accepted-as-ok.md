@@ -1,7 +1,13 @@
 # 063 — Dollar Volume 残缺快照被当作成功发布
 
 Date: 2026-09-07
-Status: implemented and verified on codex/dollar-volume-integrity; NOT deployed.
+Status: deployed and cloud-verified, 2026-09-07 10:17 CST; implementation merge `7a66dd5`.
+
+## 生产部署验收
+
+Boss明确要求云端部署后，持有finance_market_report及finance_git_pull锁完成备份、fast-forward部署与加法schema初始化。备份`/root/workspace/Finance/data/dollar_volume.db.before-integrity-20260907T021721Z`，SQLite backup API与quick_check通过。云端隔离源码快照`/tmp/finance-dv-verify-g3qPrS`运行244 passed/1 skipped，Python3.10语法通过。
+
+生产验收：quality_evidence表创建成功（初始0行），全部历史日期的排名行数前后一致，quick_check=ok。旧9/4缓存正确返回“缺少完整验收证据（旧快照）”；下一次新采集能选取9/4 legacy_transition参照。未强制重采历史、未重发Telegram、未修改cron。自然定时首次采集/投递尚未发生，不冒充自然运行验收完成。以下“未部署”字样保留为实施时的历史记录，以本节状态为准。
 
 ## 2026-09-07 自审修复（取代下文初版的缓存验收与历史兼容口径）
 
