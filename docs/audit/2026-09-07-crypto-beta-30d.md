@@ -23,3 +23,10 @@ Finance git版本部署后，在Quant现有cron锁下，验证旧入口哈希，
 - crontab仍为`6 8 * * * /root/workspace/Quant/scanners/run_daily_scan.sh`。
 - 正式成果位置：`/root/workspace/Quant/results/beta_30d/btc_beta_30d_YYYY-MM-DD.json`。
 - 本次真实预览：`/tmp/crypto-beta-30d-check/results/btc_beta_30d_2026-09-06.json`；独立验证脚本同目录`independent_check.py`。
+
+## 双榜升级验收
+
+- Boss要求beta Top10 + 180×4h RS Top10；交集置顶单列+榜内双重⭐标记。
+- 本地44相关tests通过，云端新增12 tests通过；真实dry-run成功（4h使用同日已冻结永续缓存），45个评分与独立研究结果一致。
+- 今日交集USELESS（Beta#1/RS#1）、ZEC（Beta#5/RS#2）；单条消息796字符，未手动发送。
+- 原PMARP/RVOL/NUPL停发范围已异步询问，未收到回复；在此决策完成前保留原三项，先替换已获授权的beta输出为双榜。

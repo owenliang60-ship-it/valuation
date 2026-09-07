@@ -75,3 +75,16 @@ flowchart LR
 - [x] scripts/compare_crypto_relative_momentum.py：采集、验证、排名、报告。
 - [x] 合成数据验证时间锚定、分母和缺口处理；云端真数据对拍。
 - [x] 交付报告与适用范围，不部署动量指标或改动现有beta口径。
+
+## Daily双榜：beta Top10 + 4h RS Top10（Boss明确要求）
+
+- 范围：共同使用昨日完整UTC日成交额前50。beta沿用30日及严格>1，取前10；4h RS用180个收益率，排除BTC基准，按未年化信息比率降序取前10，不另加正分门槛。
+- 复用：`crypto_beta_scanner.scan/MarketData`完成排名和beta；`compare_crypto_relative_momentum.close_series/window/score`完成4h计算。
+- 展示：一个Telegram消息开头单列两榜交集，写明两榜排名，指标值见两张榜；两榜条目重复标⭐。交集为0时明确“无”，不暗示缺失数据是未入榜。
+- 质量：每榜显示有效覆盖和实际入榜数量；4h基准失败阻止发送完整双榜，单币API失败与历史不足区别记录；Top10不足则真实显示少于10。
+- 数据：每次取前50对应4h最多188根候选（涵盖181完整收盘价及当天新增K线），严格按昨日UTC日末截出181根；串行每次1秒，约50次请求。完整原始4h行情按as_of保存独立研究/报告缓存，不能读错日；不写原共享日线缓存。
+- 替代：分开发三条消息更易刷屏；采用一条消息：交集→beta前十→RS前十。
+- [ ] 编写`crypto_daily_rankings.py`薄编排与双榜渲染；MarketData.fetch增加可选interval。
+- [ ] 交集/严格前10/无交集/不足10/4h缺口/发送失败测试。
+- [ ] 云端只读真实预览及独立已算4h研究结果对拍。
+- [ ] 根据Boss回复确定原PMARP/RVOL/NUPL是否停发，再部署每日入口。

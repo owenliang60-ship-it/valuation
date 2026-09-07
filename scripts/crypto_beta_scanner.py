@@ -76,10 +76,10 @@ class MarketData:
     def cached(self, symbol):
         return self.scanner.load_cached_data(symbol)
 
-    def fetch(self, symbol, limit):
+    def fetch(self, symbol, limit, interval='1d'):
         time.sleep(1)
         self.requests += 1
-        klines = self.scanner.fetch_klines(symbol, interval='1d', limit=limit)
+        klines = self.scanner.fetch_klines(symbol, interval=interval, limit=limit)
         if not klines:
             raise RuntimeError('K线API不可用')
         return self.scanner.klines_to_dataframe(klines)

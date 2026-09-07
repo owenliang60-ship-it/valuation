@@ -7,7 +7,7 @@ Runs the remaining scanners serially to avoid API contention:
 1. PMARP
 2. RVOL
 3. BTC NUPL
-4. BTC Beta 30D
+4. Crypto dual Top10
 """
 
 import importlib
@@ -23,7 +23,7 @@ SCANNERS = [
     ("PMARP", "binance_pmarp_scanner"),
     ("RVOL", "binance_rvol_scanner"),
     ("BTC NUPL", "btc_nupl_scanner"),
-    ("BTC Beta 30D", "binance_beta_scanner"),
+    ("Crypto 双榜", "binance_beta_scanner"),
 ]
 
 
